@@ -17,7 +17,10 @@ with raw_data AS (
         event_date,
         event_timestamp,
         event_name, 
-        --ADD CUSTOM EVENT PARAMS UNNESTING 
+        
+        -- Custom Event Parameters (dynamically extracted from config)
+        ${helpers.EXTRACT_EVENT_PARAMS('event_params')},
+
         event_value_in_usd,
         user_id,
         user_pseudo_id,
@@ -67,12 +70,7 @@ with raw_data AS (
         ${helpers.REPLACE_NULL_STRING('traffic_source.medium')} AS user_medium,
         ${helpers.REPLACE_NULL_STRING('traffic_source.name')} AS user_campaign,
 
-
-        --session specific traffic source 
-        /* First User Traffic Source Values */
-
-
-/* Session Traffic Source Values. Using Cross Channel as primary traffic fields */ 
+        /* Session Traffic Source Values. Using Cross Channel as primary traffic fields */ 
         ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.manual_campaign.campaign_id')} AS session_manual_campaign_id,
         ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.manual_campaign.campaign_name')} AS session_manual_campaign_name,
         ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.manual_campaign.source')} AS session_manual_source,
