@@ -43,7 +43,41 @@ function EXTRACT_EVENT_PARAMS(sourceArray = 'event_params') {
   }).join(',\n        ');
 }
 
+/**
+ * Generates SQL for extracting user properties from GA4's user_properties array
+ * Uses the CORE_USER_PROPS_ARRAY config to determine which properties to extract
+ * Supports types: string, int, float, double
+ * @param {string} sourceArray - Name of the array field (default: 'user_properties')
+ * @returns {string} SQL expressions for all configured user properties
+ */
+function EXTRACT_USER_PROPS(sourceArray = 'user_properties') {
+  return config.CORE_USER_PROPS_ARRAY.map(prop => {
+    let valueField;
+    
+    // Map data types to GA4's value field structure
+    switch(prop.type.toLowerCase()) {
+      case 'string':
+        valueField = 'string_value';
+        break;
+      case 'int':
+      case 'integer':
+        valueField = 'int_value';
+        break;
+      case 'float':
+      case 'double':
+        valueField = 'double_value';
+        break;
+      default:
+        throw new Error(`Unsupported property type: ${prop.type} for property: ${prop.name}`);
+    }
+    
+    // Generate the SQL extraction logic with exact property name as column alias
+    return `(SELECT value.${valueField} FROM UNNEST(${sourceArray}) WHERE key = '${prop.name}') AS ${prop.name}`;
+  }).join(',\n        ');
+}
+
 module.exports = { 
   REPLACE_NULL_STRING,
-  EXTRACT_EVENT_PARAMS 
+  EXTRACT_EVENT_PARAMS,
+  EXTRACT_USER_PROPS
 };

@@ -56,4 +56,20 @@ const CORE_PARAMS_ARRAY = [
    
 ];
 
-module.exports = { CORE_PARAMS_ARRAY };
+/**
+ * Core user properties configuration
+ * Defines which user properties to extract and their data types
+ * Supported types: string, int, float, double
+ */
+const CORE_USER_PROPS_ARRAY = [
+    {
+        type: "string",
+        name: "user_type"
+    }
+    
+];
+
+module.exports = { 
+    CORE_PARAMS_ARRAY,
+    CORE_USER_PROPS_ARRAY 
+};
