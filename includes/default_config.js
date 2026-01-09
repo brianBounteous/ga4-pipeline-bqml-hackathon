@@ -69,7 +69,30 @@ const CORE_USER_PROPS_ARRAY = [
     
 ];
 
+/**
+ * Custom item parameters configuration
+ * Defines which custom item parameters to extract from item_params array
+ * Leave empty if no custom item parameters needed
+ * Supported types: string, int, float, double
+ */
+const CUSTOM_ITEMS_PARAMS = [
+    // Example:
+    // {
+    //     type: "string",
+    //     name: "custom_size"
+    // },
+    // {
+    //     type: "string",
+    //     name: "custom_color"
+    // },
+    // {
+    //     type: "double",
+    //     name: "custom_discount_rate"
+    // }
+];
+
 module.exports = { 
     CORE_PARAMS_ARRAY,
-    CORE_USER_PROPS_ARRAY 
+    CORE_USER_PROPS_ARRAY,
+    CUSTOM_ITEMS_PARAMS
 };

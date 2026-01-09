@@ -21,8 +21,7 @@ with raw_data AS (
         ${helpers.EXTRACT_EVENT_PARAMS('event_params')},
 
         event_value_in_usd,
-        user_id,
-        user_pseudo_id,
+        COALESCE(user_id, user_pseudo_id) AS user_id,
         
         -- Privacy info as STRUCT
         STRUCT(
@@ -83,10 +82,12 @@ with raw_data AS (
             app_info.install_source
         ) AS app_info,
 
-        -- First user traffic source (flattened with transformations)
-        ${helpers.REPLACE_NULL_STRING('traffic_source.source')} AS user_source,
-        ${helpers.REPLACE_NULL_STRING('traffic_source.medium')} AS user_medium,
-        ${helpers.REPLACE_NULL_STRING('traffic_source.name')} AS user_campaign, 
+        -- First user traffic source as nested STRUCT with null handling
+        struct(
+            ${helpers.REPLACE_NULL_STRING('traffic_source.source')} AS user_source,
+            ${helpers.REPLACE_NULL_STRING('traffic_source.medium')} AS user_medium,
+            ${helpers.REPLACE_NULL_STRING('traffic_source.name')} AS user_campaign, 
+        ) AS first_user_traffic_source,
 
         stream_id,
         platform,
@@ -183,7 +184,10 @@ with raw_data AS (
                 ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.dv360_campaign.line_item_id')} AS line_item_id,
                 ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.dv360_campaign.line_item_name')} AS line_item_name
             ) AS dv360_campaign
-        ) AS session_traffic_source_last_click
+        ) AS session_traffic_source_last_click,
+
+        -- Items array with optional custom item parameters
+        ${helpers.EXTRACT_ITEMS_ARRAY()}
 
     FROM ${ref('your_ga4_source_table')}
 
