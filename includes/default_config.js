@@ -7,6 +7,21 @@ const SOURCE_DATASET = 'analytics_452829362';
 const SOURCE_TABLE_PREFIX = 'events_';
 
 /**
+ * Fresh daily table configuration
+ * If true, uses events_fresh_daily_* tables for yesterday's data (faster availability)
+ * If false or fresh_daily tables don't exist, falls back to events_* tables
+ */
+const USE_FRESH_DAILY = true;
+
+/**
+ * Late arrival reconciliation configuration
+ * Number of days to look back for reconciling late-arriving events
+ * Recommended: 4 (covers GA4's typical 72-hour late arrival window)
+ * Set to 0 to disable reconciliation
+ */
+const RECONCILIATION_LOOKBACK_DAYS = 4;
+
+/**
  * Data stream configuration
  * Defines what type of data is in your GA4 property
  * Options: 'web', 'app', or 'both'
@@ -88,67 +103,57 @@ const WEB_PARAMS_ARRAY = [
     {
         name: "link_classes",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "link_text",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "link_url",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "page_location",
         type: "string",
-        consolidated_name: "screen_location" // Consolidates with firebase_screen
+        consolidated_name: "screen_location"
     },
     {
         name: "page_referrer",
         type: "string",
-        consolidated_name: "screen_referrer" // Consolidates with firebase_previous_screen
+        consolidated_name: "screen_referrer"
     },
     {
         name: "page_title",
         type: "string",
-        consolidated_name: "screen_title" // Consolidates with firebase_screen_class
+        consolidated_name: "screen_title"
     },
     {
         name: "video_current_time",
         type: "int"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "video_duration",
         type: "int"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "video_percent",
         type: "int"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "video_provider",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "video_title",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "video_url",
         type: "string"
-        // No consolidated_name - web-only parameter
     },
     {
         name: "visible",
         type: "string"
-        // No consolidated_name - web-only parameter
     }
 ];
 
@@ -161,38 +166,57 @@ const APP_PARAMS_ARRAY = [
     {
         name: "firebase_conversion",
         type: "int"
-        // No consolidated_name - app-only parameter
     },
     {
         name: "firebase_previous_class",
         type: "string"
-        // No consolidated_name - app-only parameter
     },
     {
         name: "firebase_previous_id",
         type: "string"
-        // No consolidated_name - app-only parameter
     },
     {
         name: "firebase_previous_screen",
         type: "string",
-        consolidated_name: "screen_referrer" // Consolidates with page_referrer
+        consolidated_name: "screen_referrer"
     },
     {
         name: "firebase_screen",
         type: "string",
-        consolidated_name: "screen_location" // Consolidates with page_location
+        consolidated_name: "screen_location"
     },
     {
         name: "firebase_screen_class",
         type: "string",
-        consolidated_name: "screen_title" // Consolidates with page_title
+        consolidated_name: "screen_title"
     },
     {
         name: "firebase_screen_id",
         type: "string"
-        // No consolidated_name - app-only parameter
     }
+];
+
+/**
+ * Custom event parameters configuration
+ * Add any implementation-specific event parameters here
+ * These are always extracted regardless of DATA_STREAM_TYPE setting
+ * Use this for parameters unique to your GA4 implementation
+ * Supported types: string, int, float, double
+ */
+const CUSTOM_PARAMS_ARRAY = [
+    // Example:
+    // {
+    //     name: "user_role",
+    //     type: "string"
+    // },
+    // {
+    //     name: "purchase_value",
+    //     type: "double"
+    // },
+    // {
+    //     name: "item_count",
+    //     type: "int"
+    // }
 ];
 
 /**
@@ -209,13 +233,31 @@ const CORE_USER_PROPS_ARRAY = [
 /**
  * Custom item parameters configuration
  * Defines which custom item parameters to extract from item_params array
+ * Leave empty if no custom item parameters needed
+ * Supported types: string, int, float, double
  */
-const CUSTOM_ITEMS_PARAMS = [];
+const CUSTOM_ITEMS_PARAMS = [
+    // Example:
+    // {
+    //     name: "custom_size",
+    //     type: "string"
+    // },
+    // {
+    //     name: "custom_color",
+    //     type: "string"
+    // },
+    // {
+    //     name: "custom_discount_rate",
+    //     type: "double"
+    // }
+];
 
 module.exports = { 
     SOURCE_PROJECT,
     SOURCE_DATASET,
     SOURCE_TABLE_PREFIX,
+    USE_FRESH_DAILY,
+    RECONCILIATION_LOOKBACK_DAYS,
     DATA_STREAM_TYPE,
     CONSOLIDATE_WEB_APP_PARAMS,
     BACKFILL_START_DATE,
@@ -224,6 +266,7 @@ module.exports = {
     CORE_PARAMS_ARRAY,
     WEB_PARAMS_ARRAY,
     APP_PARAMS_ARRAY,
+    CUSTOM_PARAMS_ARRAY,
     CORE_USER_PROPS_ARRAY,
     CUSTOM_ITEMS_PARAMS
 };

@@ -1,54 +1,17 @@
 config {
-  type: "incremental",
+  type: "operations",
   schema: constants.DESTINATION_SCHEMA,
-  description: "Events records with fresh_daily support and automatic backfill detection",
-  tags: ["daily", "ga4", "core"],
-  bigquery: {
-    partitionBy: "event_date",
-    clusterBy: ["event_name", "session_key"],
-  }
+  description: "Reconciles late-arriving events from finalized events_* tables. Whatever is in the events_* table N days ago is the final version.",
+  tags: ["daily", "ga4", "reconciliation"],
+  disabled: constants.RECONCILIATION_LOOKBACK_DAYS === 0
 }
 
 js {
-  // Check if base_events table exists
-  const tableExists = BigQuery.tables.find(table => 
-    table.name === "base_events" && 
-    table.schema === constants.DESTINATION_SCHEMA
-  );
-  
-  // Determine date filter and source table based on whether table exists
-  let dateFilter;
-  let sourceTable;
-  
-  if (!tableExists) {
-    // First run: backfill historical data
-    const startDate = helpers.GET_BACKFILL_START_DATE();
-    const endDate = helpers.GET_BACKFILL_END_DATE();
-    
-    const startDateSQL = startDate.includes('FORMAT_DATE') ? `(${startDate})` : `'${startDate}'`;
-    const endDateSQL = endDate.includes('FORMAT_DATE') ? `(${endDate})` : `'${endDate}'`;
-    
-    dateFilter = `AND _TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}`;
-    sourceTable = helpers.GET_FINALIZED_SOURCE_TABLE(); // Use finalized for backfill
-    
-    console.log(`[BASE_EVENTS] Table does not exist. Running initial backfill from ${startDate} to ${endDate}`);
-  } else {
-    // Subsequent runs: incremental fresh load (yesterday)
-    dateFilter = helpers.GET_FRESH_LOAD_DATE_FILTER(constants.USE_FRESH_DAILY);
-    sourceTable = helpers.GET_FRESH_SOURCE_TABLE(constants.USE_FRESH_DAILY);
-    
-    const tableType = constants.USE_FRESH_DAILY ? 'fresh_daily' : 'events';
-    console.log('[BASE_EVENTS] Loading yesterdays data from ${tableType} table');
-  }
-  
-  // Log data stream configuration
-  console.log(`[BASE_EVENTS] Data stream type: ${constants.DATA_STREAM_TYPE}`);
-  if (constants.DATA_STREAM_TYPE === 'both') {
-    console.log(`[BASE_EVENTS] Consolidate web/app params: ${constants.CONSOLIDATE_WEB_APP_PARAMS}`);
-  }
+  console.log(`[RECONCILIATION] Reconciling late arrivals for ${constants.RECONCILIATION_LOOKBACK_DAYS} days ago using finalized events_* table`);
 }
 
-WITH raw_data AS (
+-- Extract finalized data from N days ago (same transformation logic as base_events)
+WITH finalized_data AS (
 
     SELECT 
 
@@ -61,7 +24,7 @@ WITH raw_data AS (
         batch_event_index,
         batch_page_id,
 
-        -- Core Event Parameters (always extracted)
+        -- Core Event Parameters
         ${helpers.EXTRACT_EVENT_PARAMS('event_params')}
         
         -- Web-specific parameters
@@ -87,25 +50,21 @@ WITH raw_data AS (
         COALESCE(user_id, user_pseudo_id) AS user_id,
         is_active_user,
         
-        -- Privacy info as STRUCT
         STRUCT(
             privacy_info.analytics_storage,
             privacy_info.ads_storage,
             privacy_info.uses_transient_token
         ) AS privacy_info,
 
-        -- Custom User Properties
         ${helpers.EXTRACT_USER_PROPS('user_properties')},
 
         user_first_touch_timestamp,
         
-        -- User LTV as STRUCT
         STRUCT(
             user_ltv.revenue,
             user_ltv.currency
         ) AS user_ltv,
         
-        -- Device parameters as nested STRUCT
         STRUCT(
             device.category,
             device.mobile_brand_name,
@@ -128,7 +87,6 @@ WITH raw_data AS (
             ) AS web_info
         ) AS device,
 
-        -- Geography parameters as STRUCT
         STRUCT(
             geo.continent,
             geo.country,
@@ -138,7 +96,6 @@ WITH raw_data AS (
             geo.metro
         ) AS geo,
 
-        -- App parameters as STRUCT
         STRUCT(
             app_info.id,
             app_info.version,
@@ -147,14 +104,12 @@ WITH raw_data AS (
             app_info.install_source
         ) AS app_info,
 
-        -- First user traffic source
         STRUCT(
             ${helpers.REPLACE_NULL_STRING('traffic_source.source')} AS source,
             ${helpers.REPLACE_NULL_STRING('traffic_source.medium')} AS medium,
             ${helpers.REPLACE_NULL_STRING('traffic_source.name')} AS campaign
         ) AS first_user_traffic_source,
 
-        -- Collected traffic source
         STRUCT(
             ${helpers.REPLACE_NULL_STRING('collected_traffic_source.manual_campaign_id')} AS manual_campaign_id,
             ${helpers.REPLACE_NULL_STRING('collected_traffic_source.manual_campaign_name')} AS manual_campaign_name,
@@ -173,7 +128,6 @@ WITH raw_data AS (
         stream_id,
         platform,
         
-        -- Ecommerce as STRUCT
         STRUCT(
             ecommerce.transaction_id,
             ecommerce.value,
@@ -194,7 +148,6 @@ WITH raw_data AS (
             ecommerce.unique_items
         ) AS ecommerce,
 
-        -- Session Traffic Source (all platforms)
         STRUCT(
             STRUCT(
                 ${helpers.REPLACE_NULL_STRING('session_traffic_source_last_click.manual_campaign.campaign_id')} AS campaign_id,
@@ -277,11 +230,10 @@ WITH raw_data AS (
             ) AS dv360_campaign
         ) AS session_traffic_source_last_click,
 
-        -- Items array
         ${helpers.EXTRACT_ITEMS_ARRAY()}
 
-    FROM ${sourceTable}
-    WHERE ${dateFilter}
+    FROM ${helpers.GET_FINALIZED_SOURCE_TABLE()}
+    WHERE ${helpers.GET_RECONCILIATION_DATE_FILTER()}
 
 ),
 
@@ -290,7 +242,7 @@ consolidated_params AS (
     SELECT
         *,
         ${helpers.CONSOLIDATE_PARAMS()}
-    FROM raw_data
+    FROM finalized_data
 ),
 `) }
 
@@ -298,19 +250,22 @@ keys_added AS (
     SELECT
         *,
         
-        -- Session Key
         CONCAT(
             COALESCE(stream_id, ''), '-',
             COALESCE(CAST(ga_session_id AS STRING), ''), '-',
             COALESCE(user_id, '')
         ) AS session_key,
         
-        -- Event Key: globally unique hash
         TO_BASE64(MD5(CONCAT(
             ${helpers.GENERATE_EVENT_KEY_CONCAT()}
         ))) AS event_key
         
-    FROM ${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'raw_data') }
+    FROM ${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'finalized_data') }
 )
 
-SELECT * FROM keys_added
+-- MERGE finalized events into base_events (only insert new late arrivals)
+MERGE `${constants.SOURCE_PROJECT}.${constants.DESTINATION_SCHEMA}.base_events` AS target
+USING keys_added AS source
+ON target.event_key = source.event_key
+WHEN NOT MATCHED THEN
+  INSERT ROW

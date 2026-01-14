@@ -2,6 +2,9 @@ const config = require('./default_config.js');
 
 /**
  * Replaces null values and empty strings with '(not set)'
+ * Used for standardizing GA4 string fields across reports
+ * @param {string} fieldName - The field name or expression to check
+ * @returns {string} SQL expression with null and empty string handling
  */
 function REPLACE_NULL_STRING(fieldName) {
   return `IF(${fieldName} IS NULL OR ${fieldName} = '', '(not set)', ${fieldName})`;
@@ -9,7 +12,7 @@ function REPLACE_NULL_STRING(fieldName) {
 
 /**
  * Generates SQL for extracting event parameters from an array
- * Generic function used by EXTRACT_EVENT_PARAMS, EXTRACT_WEB_PARAMS, EXTRACT_APP_PARAMS
+ * Generic function used by EXTRACT_EVENT_PARAMS, EXTRACT_WEB_PARAMS, EXTRACT_APP_PARAMS, EXTRACT_CUSTOM_PARAMS
  */
 function extractParamsSQL(paramsArray, sourceArray = 'event_params') {
   return paramsArray.map(param => {
@@ -65,6 +68,18 @@ function EXTRACT_APP_PARAMS(sourceArray = 'event_params') {
     return '';
   }
   return extractParamsSQL(config.APP_PARAMS_ARRAY, sourceArray);
+}
+
+/**
+ * Extracts custom event parameters
+ * Always extracted regardless of DATA_STREAM_TYPE
+ * Use this for implementation-specific parameters
+ */
+function EXTRACT_CUSTOM_PARAMS(sourceArray = 'event_params') {
+  if (config.CUSTOM_PARAMS_ARRAY.length === 0) {
+    return '';
+  }
+  return extractParamsSQL(config.CUSTOM_PARAMS_ARRAY, sourceArray);
 }
 
 /**
@@ -168,6 +183,11 @@ function GENERATE_EVENT_KEY_CONCAT() {
       });
     }
   }
+  
+  // Add custom params (always included)
+  config.CUSTOM_PARAMS_ARRAY.forEach(param => {
+    fields.push(`COALESCE(CAST(${param.name} AS STRING), '')`);
+  });
   
   return fields.join(", '-', ");
 }
@@ -281,6 +301,53 @@ function EXTRACT_ITEMS_ARRAY() {
     ) AS items`;
 }
 
+/**
+ * Gets the appropriate source table for fresh data loads
+ * Uses fresh_daily if available and configured, otherwise falls back to events_*
+ */
+function GET_FRESH_SOURCE_TABLE(useFreshDaily = config.USE_FRESH_DAILY) {
+  if (useFreshDaily) {
+    return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.events_fresh_daily_*\``;
+  }
+  return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
+}
+
+/**
+ * Gets the finalized events_* table (for reconciliation and backfill)
+ * Always uses events_*, never fresh_daily
+ */
+function GET_FINALIZED_SOURCE_TABLE() {
+  return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
+}
+
+/**
+ * Generates WHERE clause for fresh daily load (yesterday)
+ * Handles both fresh_daily and regular events_* table formats
+ */
+function GET_FRESH_LOAD_DATE_FILTER(useFreshDaily = config.USE_FRESH_DAILY) {
+  const yesterdayFilter = "_TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))";
+  
+  if (useFreshDaily) {
+    // fresh_daily tables don't have intraday variants
+    return yesterdayFilter;
+  }
+  
+  // Regular events_* tables need to exclude intraday
+  return `${EXCLUDE_INTRADAY_TABLES()} AND ${yesterdayFilter}`;
+}
+
+/**
+ * Generates WHERE clause for reconciliation load (N days ago)
+ * Always uses finalized events_* table
+ */
+function GET_RECONCILIATION_DATE_FILTER() {
+  const lookbackDays = config.RECONCILIATION_LOOKBACK_DAYS;
+  const excludeIntraday = EXCLUDE_INTRADAY_TABLES();
+  const reconciliationFilter = `_TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookbackDays} DAY))`;
+  
+  return `${excludeIntraday} AND ${reconciliationFilter}`;
+}
+
 function GET_SOURCE_TABLE() {
   return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
 }
@@ -308,11 +375,16 @@ module.exports = {
   EXTRACT_EVENT_PARAMS,
   EXTRACT_WEB_PARAMS,
   EXTRACT_APP_PARAMS,
+  EXTRACT_CUSTOM_PARAMS,
   CONSOLIDATE_PARAMS,
   GENERATE_EVENT_KEY_CONCAT,
   EXTRACT_USER_PROPS,
   EXTRACT_ITEMS_ARRAY,
   GET_SOURCE_TABLE,
+  GET_FRESH_SOURCE_TABLE,
+  GET_FINALIZED_SOURCE_TABLE,
+  GET_FRESH_LOAD_DATE_FILTER,
+  GET_RECONCILIATION_DATE_FILTER,
   EXCLUDE_INTRADAY_TABLES,
   GET_BACKFILL_START_DATE,
   GET_BACKFILL_END_DATE
