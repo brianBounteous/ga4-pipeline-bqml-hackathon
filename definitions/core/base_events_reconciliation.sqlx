@@ -20,7 +20,7 @@ USING (
 
     SELECT 
 
-        event_date,
+        PARSE_DATE('%Y%m%d', event_date) AS event_date,
         event_timestamp,
         event_name,
         event_previous_timestamp,
