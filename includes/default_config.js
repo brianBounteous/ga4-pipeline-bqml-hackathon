@@ -42,7 +42,7 @@ const CONSOLIDATE_WEB_APP_PARAMS = true;
  * Format: YYYYMMDD
  * If null, defaults to 13 months ago for start, yesterday for end
  */
-const BACKFILL_START_DATE = null; // e.g., '20240101' or null for auto
+const BACKFILL_START_DATE = '20251201'; // e.g., '20240101' or null for auto
 const BACKFILL_END_DATE = null;   // e.g., '20241231' or null for auto
 
 /**
