@@ -1,17 +1,22 @@
 config {
   type: "operations",
-  schema: constants.DESTINATION_SCHEMA,
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "Reconciles late-arriving events from finalized events_* tables. Whatever is in the events_* table N days ago is the final version.",
   tags: ["daily", "ga4", "reconciliation"],
-  disabled: constants.RECONCILIATION_LOOKBACK_DAYS === 0
+  hasOutput: false
 }
 
 js {
-  console.log(`[RECONCILIATION] Reconciling late arrivals for ${constants.RECONCILIATION_LOOKBACK_DAYS} days ago using finalized events_* table`);
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  
+  console.log(`[RECONCILIATION] Reconciling late arrivals for ${config.RECONCILIATION_LOOKBACK_DAYS} days ago using finalized events_* table`);
 }
 
--- Extract finalized data from N days ago (same transformation logic as base_events)
-WITH finalized_data AS (
+MERGE `${config.SOURCE_PROJECT}.${config.DESTINATION_SCHEMA}.base_events` AS target
+USING (
+  -- Extract finalized data from N days ago (same transformation logic as base_events)
+  WITH finalized_data AS (
 
     SELECT 
 
@@ -28,19 +33,19 @@ WITH finalized_data AS (
         ${helpers.EXTRACT_EVENT_PARAMS('event_params')}
         
         -- Web-specific parameters
-        ${ when(constants.DATA_STREAM_TYPE === 'web' || constants.DATA_STREAM_TYPE === 'both',
+        ${ when(config.DATA_STREAM_TYPE === 'web' || config.DATA_STREAM_TYPE === 'both',
             `,
         ${helpers.EXTRACT_WEB_PARAMS('event_params')}`
         )}
         
         -- App-specific parameters
-        ${ when(constants.DATA_STREAM_TYPE === 'app' || constants.DATA_STREAM_TYPE === 'both',
+        ${ when(config.DATA_STREAM_TYPE === 'app' || config.DATA_STREAM_TYPE === 'both',
             `,
         ${helpers.EXTRACT_APP_PARAMS('event_params')}`
         )}
         
         -- Custom event parameters (always extracted)
-        ${ when(constants.CUSTOM_PARAMS_ARRAY.length > 0,
+        ${ when(config.CUSTOM_PARAMS_ARRAY.length > 0,
             `,
         ${helpers.EXTRACT_CUSTOM_PARAMS('event_params')}`
         )},
@@ -235,18 +240,18 @@ WITH finalized_data AS (
     FROM ${helpers.GET_FINALIZED_SOURCE_TABLE()}
     WHERE ${helpers.GET_RECONCILIATION_DATE_FILTER()}
 
-),
+  ),
 
-${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, `
-consolidated_params AS (
+  ${ when(config.DATA_STREAM_TYPE === 'both' && config.CONSOLIDATE_WEB_APP_PARAMS, `
+  consolidated_params AS (
     SELECT
         *,
         ${helpers.CONSOLIDATE_PARAMS()}
     FROM finalized_data
-),
-`) }
+  ),
+  `) }
 
-keys_added AS (
+  keys_added AS (
     SELECT
         *,
         
@@ -260,12 +265,11 @@ keys_added AS (
             ${helpers.GENERATE_EVENT_KEY_CONCAT()}
         ))) AS event_key
         
-    FROM ${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'finalized_data') }
-)
+    FROM ${ when(config.DATA_STREAM_TYPE === 'both' && config.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'finalized_data') }
+  )
 
--- MERGE finalized events into base_events (only insert new late arrivals)
-MERGE `${constants.SOURCE_PROJECT}.${constants.DESTINATION_SCHEMA}.base_events` AS target
-USING keys_added AS source
+  SELECT * FROM keys_added
+) AS source
 ON target.event_key = source.event_key
 WHEN NOT MATCHED THEN
-  INSERT ROW
+  INSERT ROW;

@@ -252,7 +252,11 @@ const CUSTOM_ITEMS_PARAMS = [
     // }
 ];
 
-module.exports = { 
+/**
+ * Core configuration object
+ * Export all config values as a single object
+ */
+const coreConfig = {
     SOURCE_PROJECT,
     SOURCE_DATASET,
     SOURCE_TABLE_PREFIX,
@@ -269,4 +273,8 @@ module.exports = {
     CUSTOM_PARAMS_ARRAY,
     CORE_USER_PROPS_ARRAY,
     CUSTOM_ITEMS_PARAMS
+};
+
+module.exports = {
+    coreConfig
 };

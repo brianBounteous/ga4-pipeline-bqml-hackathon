@@ -1,6 +1,6 @@
 config {
   type: "incremental",
-  schema: constants.DESTINATION_SCHEMA,
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET, 
   description: "Events records with fresh_daily support and automatic backfill detection",
   tags: ["daily", "ga4", "core"],
   bigquery: {
@@ -10,41 +10,41 @@ config {
 }
 
 js {
-  // Check if base_events table exists
-  const tableExists = BigQuery.tables.find(table => 
-    table.name === "base_events" && 
-    table.schema === constants.DESTINATION_SCHEMA
-  );
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
   
-  // Determine date filter and source table based on whether table exists
+  // On first run, incremental tables start fresh
+  
   let dateFilter;
   let sourceTable;
   
-  if (!tableExists) {
-    // First run: backfill historical data
+  //  if incremental_where is not set, this is likely first run
+  
+  
+  if (config.FORCE_BACKFILL || !dataform.projectConfig.vars?.initialLoadComplete) {
+    // Backfill mode
     const startDate = helpers.GET_BACKFILL_START_DATE();
     const endDate = helpers.GET_BACKFILL_END_DATE();
     
     const startDateSQL = startDate.includes('FORMAT_DATE') ? `(${startDate})` : `'${startDate}'`;
     const endDateSQL = endDate.includes('FORMAT_DATE') ? `(${endDate})` : `'${endDate}'`;
     
-    dateFilter = `AND _TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}`;
-    sourceTable = helpers.GET_FINALIZED_SOURCE_TABLE(); // Use finalized for backfill
+    dateFilter = `_TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}`;
+    sourceTable = helpers.GET_FINALIZED_SOURCE_TABLE();
     
-    console.log(`[BASE_EVENTS] Table does not exist. Running initial backfill from ${startDate} to ${endDate}`);
+    console.log(`[BASE_EVENTS] Running backfill from ${startDate} to ${endDate}`);
   } else {
-    // Subsequent runs: incremental fresh load (yesterday)
-    dateFilter = helpers.GET_FRESH_LOAD_DATE_FILTER(constants.USE_FRESH_DAILY);
-    sourceTable = helpers.GET_FRESH_SOURCE_TABLE(constants.USE_FRESH_DAILY);
+    // Incremental mode (yesterday only)
+    dateFilter = helpers.GET_FRESH_LOAD_DATE_FILTER(config.USE_FRESH_DAILY);
+    sourceTable = helpers.GET_FRESH_SOURCE_TABLE(config.USE_FRESH_DAILY);
     
-    const tableType = constants.USE_FRESH_DAILY ? 'fresh_daily' : 'events';
+    const tableType = config.USE_FRESH_DAILY ? 'fresh_daily' : 'events';
     console.log('[BASE_EVENTS] Loading yesterdays data from ${tableType} table');
   }
   
-  // Log data stream configuration
-  console.log(`[BASE_EVENTS] Data stream type: ${constants.DATA_STREAM_TYPE}`);
-  if (constants.DATA_STREAM_TYPE === 'both') {
-    console.log('[BASE_EVENTS] Consolidate web/app params: ${constants.CONSOLIDATE_WEB_APP_PARAMS}');
+  console.log(`[BASE_EVENTS] Data stream type: ${config.DATA_STREAM_TYPE}`);
+  if (config.DATA_STREAM_TYPE === 'both') {
+    console.log(`[BASE_EVENTS] Consolidate web/app params: ${config.CONSOLIDATE_WEB_APP_PARAMS}`);
   }
 }
 
@@ -65,19 +65,19 @@ WITH raw_data AS (
         ${helpers.EXTRACT_EVENT_PARAMS('event_params')}
         
         -- Web-specific parameters
-        ${ when(constants.DATA_STREAM_TYPE === 'web' || constants.DATA_STREAM_TYPE === 'both',
+        ${ when(config.DATA_STREAM_TYPE === 'web' || config.DATA_STREAM_TYPE === 'both',
             `,
         ${helpers.EXTRACT_WEB_PARAMS('event_params')}`
         )}
         
         -- App-specific parameters
-        ${ when(constants.DATA_STREAM_TYPE === 'app' || constants.DATA_STREAM_TYPE === 'both',
+        ${ when(config.DATA_STREAM_TYPE === 'app' || config.DATA_STREAM_TYPE === 'both',
             `,
         ${helpers.EXTRACT_APP_PARAMS('event_params')}`
         )}
         
         -- Custom event parameters (always extracted)
-        ${ when(constants.CUSTOM_PARAMS_ARRAY.length > 0,
+        ${ when(config.CUSTOM_PARAMS_ARRAY.length > 0,
             `,
         ${helpers.EXTRACT_CUSTOM_PARAMS('event_params')}`
         )},
@@ -175,13 +175,6 @@ WITH raw_data AS (
         
         -- Ecommerce as STRUCT
         STRUCT(
-            ecommerce.transaction_id,
-            ecommerce.value,
-            ecommerce.tax,
-            ecommerce.shipping,
-            ecommerce.currency,
-            ecommerce.coupon,
-            ecommerce.affiliation,
             ecommerce.total_item_quantity,
             ecommerce.purchase_revenue_in_usd,
             ecommerce.purchase_revenue,
@@ -191,7 +184,8 @@ WITH raw_data AS (
             ecommerce.shipping_value,
             ecommerce.tax_value_in_usd,
             ecommerce.tax_value,
-            ecommerce.unique_items
+            ecommerce.unique_items,
+            ecommerce.transaction_id
         ) AS ecommerce,
 
         -- Session Traffic Source (all platforms)
@@ -285,7 +279,7 @@ WITH raw_data AS (
 
 ),
 
-${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, `
+${ when(config.DATA_STREAM_TYPE === 'both' && config.CONSOLIDATE_WEB_APP_PARAMS, `
 consolidated_params AS (
     SELECT
         *,
@@ -310,7 +304,7 @@ keys_added AS (
             ${helpers.GENERATE_EVENT_KEY_CONCAT()}
         ))) AS event_key
         
-    FROM ${ when(constants.DATA_STREAM_TYPE === 'both' && constants.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'raw_data') }
+    FROM ${ when(config.DATA_STREAM_TYPE === 'both' && config.CONSOLIDATE_WEB_APP_PARAMS, 'consolidated_params', 'raw_data') }
 )
 
 SELECT * FROM keys_added

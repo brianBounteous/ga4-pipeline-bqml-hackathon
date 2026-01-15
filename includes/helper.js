@@ -1,4 +1,17 @@
-const config = require('./default_config.js');
+/**
+ * Get merged configuration from core and custom configs
+ * This allows for custom config overrides while maintaining core defaults
+ */
+const getConfig = () => {
+  const { coreConfig } = require("./default_config");
+  // If you have custom config later, you can uncomment this:
+  // const { customConfig } = require("../custom/config");
+  // return { ...coreConfig, ...customConfig };
+  return { ...coreConfig };
+};
+
+// Get config instance to use throughout helpers
+const config = getConfig();
 
 /**
  * Replaces null values and empty strings with '(not set)'
@@ -371,6 +384,7 @@ function GET_BACKFILL_END_DATE() {
 }
 
 module.exports = { 
+  getConfig,
   REPLACE_NULL_STRING,
   EXTRACT_EVENT_PARAMS,
   EXTRACT_WEB_PARAMS,
