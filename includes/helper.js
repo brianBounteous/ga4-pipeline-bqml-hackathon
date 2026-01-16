@@ -1,16 +1,11 @@
 /**
  * Get merged configuration from core and custom configs
- * This allows for custom config overrides while maintaining core defaults
  */
 const getConfig = () => {
   const { coreConfig } = require("./default_config");
-  // If you have custom config later, you can uncomment this:
-  // const { customConfig } = require("../custom/config");
-  // return { ...coreConfig, ...customConfig };
   return { ...coreConfig };
 };
 
-// Get config instance to use throughout helpers
 const config = getConfig();
 
 /**
@@ -316,42 +311,37 @@ function EXTRACT_ITEMS_ARRAY() {
 
 /**
  * Gets the appropriate source table for fresh data loads
- * Uses fresh_daily if available and configured, otherwise falls back to events_*
+ * Now accepts project, dataset, and prefix as parameters from workflow vars
  */
 function GET_FRESH_SOURCE_TABLE(useFreshDaily = config.USE_FRESH_DAILY) {
-  if (useFreshDaily) {
-    return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.events_fresh_daily_*\``;
-  }
-  return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
+  // This will be called from SQLX with workflow vars injected
+  return useFreshDaily 
+    ? "events_fresh_daily_*"  // Return table suffix only
+    : "events_*";
 }
 
 /**
  * Gets the finalized events_* table (for reconciliation and backfill)
- * Always uses events_*, never fresh_daily
  */
 function GET_FINALIZED_SOURCE_TABLE() {
-  return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
+  return "events_*";  // Return table suffix only
 }
 
 /**
  * Generates WHERE clause for fresh daily load (yesterday)
- * Handles both fresh_daily and regular events_* table formats
  */
 function GET_FRESH_LOAD_DATE_FILTER(useFreshDaily = config.USE_FRESH_DAILY) {
   const yesterdayFilter = "_TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))";
   
   if (useFreshDaily) {
-    // fresh_daily tables don't have intraday variants
     return yesterdayFilter;
   }
   
-  // Regular events_* tables need to exclude intraday
   return `${EXCLUDE_INTRADAY_TABLES()} AND ${yesterdayFilter}`;
 }
 
 /**
  * Generates WHERE clause for reconciliation load (N days ago)
- * Always uses finalized events_* table
  */
 function GET_RECONCILIATION_DATE_FILTER() {
   const lookbackDays = config.RECONCILIATION_LOOKBACK_DAYS;
@@ -359,10 +349,6 @@ function GET_RECONCILIATION_DATE_FILTER() {
   const reconciliationFilter = `_TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${lookbackDays} DAY))`;
   
   return `${excludeIntraday} AND ${reconciliationFilter}`;
-}
-
-function GET_SOURCE_TABLE() {
-  return `\`${config.SOURCE_PROJECT}.${config.SOURCE_DATASET}.${config.SOURCE_TABLE_PREFIX}*\``;
 }
 
 function EXCLUDE_INTRADAY_TABLES() {
@@ -394,7 +380,6 @@ module.exports = {
   GENERATE_EVENT_KEY_CONCAT,
   EXTRACT_USER_PROPS,
   EXTRACT_ITEMS_ARRAY,
-  GET_SOURCE_TABLE,
   GET_FRESH_SOURCE_TABLE,
   GET_FINALIZED_SOURCE_TABLE,
   GET_FRESH_LOAD_DATE_FILTER,

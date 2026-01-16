@@ -1,12 +1,4 @@
 /**
- * Source table configuration
- * Define the BigQuery project, dataset, and table prefix for GA4 data
- */
-const SOURCE_PROJECT = 'server-side-bounteous-ga4-2024';
-const SOURCE_DATASET = 'analytics_452829362';
-const SOURCE_TABLE_PREFIX = 'events_';
-
-/**
  * Fresh daily table configuration
  * If true, uses events_fresh_daily_* tables for yesterday's data (faster availability)
  * If false or fresh_daily tables don't exist, falls back to events_* tables
@@ -257,9 +249,6 @@ const CUSTOM_ITEMS_PARAMS = [
  * Export all config values as a single object
  */
 const coreConfig = {
-    SOURCE_PROJECT,
-    SOURCE_DATASET,
-    SOURCE_TABLE_PREFIX,
     USE_FRESH_DAILY,
     RECONCILIATION_LOOKBACK_DAYS,
     DATA_STREAM_TYPE,

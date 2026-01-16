@@ -4,7 +4,7 @@ config {
   description: "Reconciles late-arriving events from finalized events_* tables. Whatever is in the events_* table N days ago is the final version.",
   tags: ["daily", "ga4", "reconciliation"],
   hasOutput: false,
-  dependencies: ["base_events"]  // Add this line
+  dependencies: ["base_events"]
 }
 
 js {
@@ -14,7 +14,7 @@ js {
   console.log(`[RECONCILIATION] Reconciling late arrivals for ${config.RECONCILIATION_LOOKBACK_DAYS} days ago using finalized events_* table`);
 }
 
-MERGE `${config.SOURCE_PROJECT}.${config.DESTINATION_SCHEMA}.base_events` AS target
+MERGE ${ref("base_events")} AS target
 USING (
   -- Extract finalized data from N days ago (same transformation logic as base_events)
   WITH finalized_data AS (
@@ -230,9 +230,11 @@ USING (
             ) AS dv360_campaign
         ) AS session_traffic_source_last_click,
 
+      
         ${helpers.EXTRACT_ITEMS_ARRAY()}
 
-    FROM ${helpers.GET_FINALIZED_SOURCE_TABLE()}
+    FROM ${ref("events_*")}
+    
     WHERE ${helpers.GET_RECONCILIATION_DATE_FILTER()}
 
   ),

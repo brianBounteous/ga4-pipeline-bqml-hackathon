@@ -10,14 +10,13 @@ config {
 }
 
 pre_operations {
-  -- Create a temporary table to store the checkpoint date
   CREATE TEMP TABLE IF NOT EXISTS date_checkpoint AS
   SELECT 
     COALESCE(
       MAX(event_date), 
-      DATE_SUB(CURRENT_DATE(), INTERVAL 13 MONTH)  -- Falls back to default backfill logic
+      DATE_SUB(CURRENT_DATE(), INTERVAL 13 MONTH)
     ) AS checkpoint_date
-  FROM `${dataform.projectConfig.defaultProject}.${dataform.projectConfig.vars.DESTINATION_DATASET}.base_events`
+  FROM `${dataform.projectConfig.vars.SOURCE_PROJECT}.${dataform.projectConfig.vars.DESTINATION_DATASET}.base_events`
   WHERE TRUE
 }
 
@@ -29,12 +28,9 @@ js {
   let sourceTable;
   let useCheckpoint = false;
   
-  // Try to determine if table exists by checking if we're in incremental mode
-  // In Dataform, when a table doesn't exist, it's the first run
   const isFirstRun = !dataform.projectConfig.vars?.initialLoadComplete && config.FORCE_BACKFILL !== false;
   
   if (isFirstRun || config.FORCE_BACKFILL) {
-    // First run or forced backfill: load historical data
     const startDate = helpers.GET_BACKFILL_START_DATE();
     const endDate = helpers.GET_BACKFILL_END_DATE();
     
@@ -42,13 +38,12 @@ js {
     const endDateSQL = endDate.includes('FORMAT_DATE') ? `(${endDate})` : `'${endDate}'`;
     
     dateFilter = `_TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}`;
-    sourceTable = helpers.GET_FINALIZED_SOURCE_TABLE();
+    sourceTable = ref("events_*");
     useCheckpoint = false;
     
     console.log(`[BASE_EVENTS] Running backfill from ${startDate} to ${endDate}`);
   } else {
-    // Incremental mode: use checkpoint to catch up on any missing days
-    sourceTable = helpers.GET_FRESH_SOURCE_TABLE(config.USE_FRESH_DAILY);
+    sourceTable = config.USE_FRESH_DAILY ? ref("events_fresh_daily_*") : ref("events_*");
     useCheckpoint = true;
     
     const tableType = config.USE_FRESH_DAILY ? 'fresh_daily' : 'events';

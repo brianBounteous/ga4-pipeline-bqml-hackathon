@@ -4,4 +4,5 @@ defaultProject: server-side-bounteous-ga4-2024
 vars: 
     DESTINATION_DATASET: ga4_reporting
     SOURCE_DATASET: analytics_452829362
-    
+    SOURCE_PROJECT: server-side-bounteous-ga4-2024
+    SOURCE_TABLE_PREFIX: events_
