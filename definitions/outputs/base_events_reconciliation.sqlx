@@ -169,24 +169,18 @@ USING (
       platform,
       
       STRUCT(
-          ecommerce.transaction_id,
-          ecommerce.value,
-          ecommerce.tax,
-          ecommerce.shipping,
-          ecommerce.currency,
-          ecommerce.coupon,
-          ecommerce.affiliation,
-          ecommerce.total_item_quantity,
-          ecommerce.purchase_revenue_in_usd,
-          ecommerce.purchase_revenue,
-          ecommerce.refund_value_in_usd,
-          ecommerce.refund_value,
-          ecommerce.shipping_value_in_usd,
-          ecommerce.shipping_value,
-          ecommerce.tax_value_in_usd,
-          ecommerce.tax_value,
-          ecommerce.unique_items
-      ) AS ecommerce,
+            ecommerce.total_item_quantity,
+            ecommerce.purchase_revenue_in_usd,
+            ecommerce.purchase_revenue,
+            ecommerce.refund_value_in_usd,
+            ecommerce.refund_value,
+            ecommerce.shipping_value_in_usd,
+            ecommerce.shipping_value,
+            ecommerce.tax_value_in_usd,
+            ecommerce.tax_value,
+            ecommerce.unique_items,
+            ecommerce.transaction_id
+        ) AS ecommerce,
 
       STRUCT(
           STRUCT(
