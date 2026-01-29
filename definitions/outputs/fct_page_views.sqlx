@@ -1,0 +1,185 @@
+config {
+  type: "table",
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Page view fact table at page-session grain with engagement metrics",
+  tags: ["daily", "ga4", "facts"],
+  dependencies: ["base_events"],
+  bigquery: {
+    partitionBy: "session_date",
+    clusterBy: ["page_key", "session_key"]
+  }
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  const effectiveDataStreamType = helpers.getEffectiveDataStreamType();
+  const screenFields = helpers.getScreenFieldRefs();
+  
+  // Determine the correct event name for page views
+  let pageViewEventName;
+  if (effectiveDataStreamType === 'web') {
+    pageViewEventName = 'page_view';
+  } else if (effectiveDataStreamType === 'app') {
+    pageViewEventName = 'screen_view';
+  } else {
+    // For 'both', include both event types
+    pageViewEventName = null; // Will use OR logic in SQL
+  }
+  
+  console.log(`[FCT_PAGE_VIEWS] Building page view facts at page-session grain`);
+  console.log(`[FCT_PAGE_VIEWS] Effective data stream type: ${effectiveDataStreamType}`);
+  console.log(`[FCT_PAGE_VIEWS] Page view event name: ${pageViewEventName || 'page_view OR screen_view'}`);
+}
+
+WITH page_view_events AS (
+  SELECT
+    -- Keys
+    ${ when(effectiveDataStreamType === 'web', 'page_session_key') }
+    ${ when(effectiveDataStreamType === 'app', 'screen_session_key') }
+    ${ when(effectiveDataStreamType === 'both', 'COALESCE(page_session_key, screen_session_key)') } AS page_session_key,
+    
+    ${screenFields.key} AS page_key,
+    session_key,
+    user_id,
+    user_pseudo_id,
+    
+    -- Dates & timestamps
+    event_date AS session_date,
+    event_timestamp,
+    
+    -- Page attributes (for convenience, though available via FK)
+    ${screenFields.location} AS page_location,
+    ${screenFields.path} AS page_path,
+    ${screenFields.title} AS page_title,
+    
+    -- Engagement metrics
+    engagement_time_msec,
+    percent_scrolled,
+    
+    -- Event metadata
+    event_name
+    
+  FROM ${ref("base_events")}
+  WHERE 1=1
+    AND ${screenFields.key} IS NOT NULL
+    AND ${screenFields.key} != ''
+    ${ when(effectiveDataStreamType === 'web',
+      `AND event_name = 'page_view'`
+    )}
+    ${ when(effectiveDataStreamType === 'app',
+      `AND event_name = 'screen_view'`
+    )}
+    ${ when(effectiveDataStreamType === 'both',
+      `AND event_name IN ('page_view', 'screen_view')`
+    )}
+),
+
+-- Calculate time on page using next event timestamp
+page_view_with_next_event AS (
+  SELECT
+    *,
+    -- Get next event timestamp within the same session
+    LEAD(event_timestamp) OVER (
+      PARTITION BY session_key 
+      ORDER BY event_timestamp
+    ) AS next_event_timestamp,
+    
+    -- Get page view sequence number within session
+    ROW_NUMBER() OVER (
+      PARTITION BY session_key 
+      ORDER BY event_timestamp
+    ) AS page_view_number
+    
+  FROM page_view_events
+),
+
+-- Calculate entry and exit pages per session
+session_boundaries AS (
+  SELECT
+    session_key,
+    MIN(event_timestamp) AS first_event_timestamp,
+    MAX(event_timestamp) AS last_event_timestamp
+  FROM page_view_events
+  GROUP BY session_key
+),
+
+-- Aggregate to page-session grain
+page_session_aggregated AS (
+  SELECT
+    pv.page_session_key,
+    pv.page_key,
+    pv.session_key,
+    pv.user_id,
+    pv.user_pseudo_id,
+    
+    -- Use the first occurrence date for this page-session
+    MIN(pv.session_date) AS session_date,
+    
+    -- Page attributes (use first values)
+    ANY_VALUE(pv.page_location) AS page_location,
+    ANY_VALUE(pv.page_path) AS page_path,
+    ANY_VALUE(pv.page_title) AS page_title,
+    
+    -- Sequence
+    MIN(pv.page_view_number) AS page_view_number,
+    
+    -- Time on page (calculate from events)
+    TIMESTAMP_DIFF(
+      TIMESTAMP_MICROS(MIN(pv.next_event_timestamp)),
+      TIMESTAMP_MICROS(MIN(pv.event_timestamp)),
+      SECOND
+    ) AS time_on_page_seconds,
+    
+    -- Engagement metrics
+    SUM(COALESCE(pv.engagement_time_msec, 0)) AS total_engagement_time_msec,
+    MAX(COALESCE(pv.percent_scrolled, 0)) AS max_scroll_depth,
+    COUNT(*) AS page_view_event_count,
+    
+    -- Entry/exit flags
+    MAX(CASE WHEN pv.event_timestamp = sb.first_event_timestamp THEN TRUE ELSE FALSE END) AS is_entry_page,
+    MAX(CASE WHEN pv.event_timestamp = sb.last_event_timestamp THEN TRUE ELSE FALSE END) AS is_exit_page
+    
+  FROM page_view_with_next_event pv
+  LEFT JOIN session_boundaries sb ON pv.session_key = sb.session_key
+  GROUP BY 
+    pv.page_session_key,
+    pv.page_key,
+    pv.session_key,
+    pv.user_id,
+    pv.user_pseudo_id
+)
+
+SELECT
+  -- Keys
+  page_session_key,
+  page_key,
+  session_key,
+  user_id,
+  user_pseudo_id,
+  
+  -- Date (for partitioning)
+  session_date,
+  
+  -- Page attributes (denormalized for convenience)
+  page_location,
+  page_path,
+  page_title,
+  
+  -- Sequence
+  page_view_number,
+  
+  -- Time metrics
+  time_on_page_seconds,
+  total_engagement_time_msec,
+  ROUND(total_engagement_time_msec / 1000, 2) AS total_engagement_time_seconds,
+  
+  -- Engagement metrics
+  max_scroll_depth,
+  page_view_event_count,
+  
+  -- Flags
+  is_entry_page,
+  is_exit_page
+
+FROM page_session_aggregated
