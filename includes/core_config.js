@@ -47,7 +47,7 @@ const PROPERTIES_CONFIG = null;
  * Default data stream type (used when PROPERTIES_CONFIG is null)
  * Options: 'web', 'app', or 'both'
  */
-const DATA_STREAM_TYPE = 'web';
+const DATA_STREAM_TYPE = 'both';
 
 /**
  * Parameter consolidation for combined web/app streams
@@ -79,19 +79,24 @@ const INITIAL_LOAD_DAYS = 7;
 
 /**
  * Manual full backfill mode - Set to true ONLY for intentional historical loads
- * false (default): Initial loads use INITIAL_LOAD_DAYS lookback
- * true: Uses BACKFILL_START_DATE and BACKFILL_END_DATE range
+ * Can be overridden via workflow compilation variables
  * 
- * IMPORTANT: Always set back to false after backfill completes
+ * IMPORTANT: This should ALWAYS be false in repository code
+ * Override via release compilation variables for one-time backfill operations
+ * 
+ * To override: Set compilation variable FORCE_FULL_BACKFILL=true in release config
  */
-const FORCE_FULL_BACKFILL = false;
+const FORCE_FULL_BACKFILL = dataform.projectConfig.vars.FORCE_FULL_BACKFILL === 'true' || false;
 
 /**
  * Backfill date range (YYYYMMDD format, only used when FORCE_FULL_BACKFILL = true)
+ * Can be overridden via workflow compilation variables
  * null = auto-calculate (13 months ago to yesterday)
+ * 
+ * To override: Set BACKFILL_START_DATE and BACKFILL_END_DATE in release config
  */
-const BACKFILL_START_DATE = null;  // e.g., '20240101'
-const BACKFILL_END_DATE = null;    // e.g., '20241231'
+const BACKFILL_START_DATE = dataform.projectConfig.vars.BACKFILL_START_DATE || null;
+const BACKFILL_END_DATE = dataform.projectConfig.vars.BACKFILL_END_DATE || null;
 
 // ============================================================================
 // PARAMETER EXTRACTION CONFIGURATION
@@ -203,3 +208,5 @@ const coreConfig = {
 module.exports = {
     coreConfig
 };
+
+
