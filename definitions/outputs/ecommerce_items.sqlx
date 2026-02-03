@@ -1,0 +1,94 @@
+config {
+  type: "table",
+  disabled: !dataform.projectConfig.vars.HAS_ECOMMERCE,
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Item-level ecommerce data from all ecommerce events (wide table with facts and dimensions)",
+  tags: ["daily", "ga4", "ecommerce", "reporting"],
+  dependencies: ["base_events"],
+  bigquery: {
+    partitionBy: "event_date",
+    clusterBy: ["item_id", "session_key"]
+  }
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  const pageSessionKeyRef = helpers.getPageSessionKeyRef();
+  
+  // Generate event name list for WHERE clause
+  const ecommerceEvents = config.ECOMMERCE_ITEM_EVENTS
+    .map(e => `'${e}'`)
+    .join(', ');
+  
+  console.log(`[ECOMMERCE_ITEMS] Building item-level ecommerce table`);
+  console.log(`[ECOMMERCE_ITEMS] Ecommerce events: ${config.ECOMMERCE_ITEM_EVENTS.join(', ')}`);
+  console.log(`[ECOMMERCE_ITEMS] Page session key field: ${pageSessionKeyRef}`);
+}
+
+SELECT
+  -- Keys
+  event_key,
+  user_id,
+  session_key,
+  ${pageSessionKeyRef} AS page_session_key,
+  ecommerce.transaction_id,
+  
+  -- Timestamps
+  event_date,
+  event_timestamp,
+  
+  -- Event metadata
+  event_name,
+  
+  -- Item dimensions
+  items.item_id,
+  items.item_name,
+  items.item_brand,
+  items.item_variant,
+  items.item_category,
+  items.item_category2,
+  items.item_category3,
+  items.item_category4,
+  items.item_category5,
+  
+  -- Item facts
+  items.quantity,
+  items.price,
+  items.price_in_usd,
+  items.item_revenue,
+  items.item_revenue_in_usd,
+  items.item_refund,
+  items.item_refund_in_usd,
+  
+  -- Item metadata
+  items.coupon,
+  items.affiliation,
+  items.location_id,
+  items.item_list_id,
+  items.item_list_name,
+  items.item_list_index,
+  items.promotion_id,
+  items.promotion_name,
+  items.creative_name,
+  items.creative_slot,
+  
+  -- Custom item parameters (if configured)
+  items.item_params_custom,
+  
+  -- Transaction context (for purchases/refunds)
+  ecommerce.purchase_revenue AS transaction_revenue,
+  ecommerce.purchase_revenue_in_usd AS transaction_revenue_in_usd,
+  
+  -- Derived flags
+  event_name IN ('purchase', 'refund') AS is_transaction_event,
+  event_name = 'purchase' AS is_purchase,
+  event_name = 'refund' AS is_refund,
+  event_name = 'view_item' AS is_view,
+  event_name = 'add_to_cart' AS is_add_to_cart,
+  event_name = 'remove_from_cart' AS is_remove_from_cart
+
+FROM ${ref("base_events")}
+CROSS JOIN UNNEST(items) AS items
+WHERE event_name IN (${ecommerceEvents})
+  AND items.item_id IS NOT NULL

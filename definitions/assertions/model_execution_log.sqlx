@@ -1,0 +1,138 @@
+config {
+  type: "incremental",
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Audit log tracking execution of all pipeline models",
+  tags: ["daily", "ga4", "core", "audit"],
+  bigquery: {
+    partitionBy: "load_date",
+    clusterBy: ["model_name", "event_date"]
+  }
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  
+  // Track which models are enabled and should be logged
+  const enabledModels = [
+    'base_events',
+    'sessions',
+    'dim_pages',
+    'fct_page_views'
+  ];
+  
+  // Add ecommerce models if enabled
+  if (config.HAS_ECOMMERCE) {
+    enabledModels.push('transactions', 'ecommerce_items');
+  }
+  
+  console.log(`[MODEL_EXECUTION_LOG] Tracking models: ${enabledModels.join(', ')}`);
+}
+
+-- Log execution metadata for base_events
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'base_events' AS model_name,
+  event_date,
+  COUNT(*) AS row_count,
+  MIN(event_timestamp) AS min_event_timestamp,
+  MAX(event_timestamp) AS max_event_timestamp,
+  COUNT(DISTINCT session_key) AS unique_sessions,
+  COUNT(DISTINCT user_id) AS unique_users
+FROM ${ref("base_events")}
+WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND event_date < CURRENT_DATE()
+GROUP BY event_date
+
+UNION ALL
+
+-- Log execution metadata for sessions
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'sessions' AS model_name,
+  session_date AS event_date,
+  COUNT(*) AS row_count,
+  MIN(session_start_timestamp) AS min_event_timestamp,
+  MAX(session_end_timestamp) AS max_event_timestamp,
+  COUNT(DISTINCT session_key) AS unique_sessions,
+  COUNT(DISTINCT user_id) AS unique_users
+FROM ${ref("sessions")}
+WHERE session_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND session_date < CURRENT_DATE()
+GROUP BY session_date
+
+UNION ALL
+
+-- Log execution metadata for dim_pages
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'dim_pages' AS model_name,
+  last_seen_date AS event_date,
+  COUNT(*) AS row_count,
+  NULL AS min_event_timestamp,
+  NULL AS max_event_timestamp,
+  NULL AS unique_sessions,
+  NULL AS unique_users
+FROM ${ref("dim_pages")}
+WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND last_seen_date < CURRENT_DATE()
+GROUP BY last_seen_date
+
+UNION ALL
+
+-- Log execution metadata for fct_page_views
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'fct_page_views' AS model_name,
+  session_date AS event_date,
+  COUNT(*) AS row_count,
+  NULL AS min_event_timestamp,
+  NULL AS max_event_timestamp,
+  COUNT(DISTINCT session_key) AS unique_sessions,
+  COUNT(DISTINCT user_id) AS unique_users
+FROM ${ref("fct_page_views")}
+WHERE session_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND session_date < CURRENT_DATE()
+GROUP BY session_date
+
+${ when(config.HAS_ECOMMERCE, `
+UNION ALL
+
+-- Log execution metadata for transactions
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'transactions' AS model_name,
+  event_date,
+  COUNT(*) AS row_count,
+  MIN(event_timestamp) AS min_event_timestamp,
+  MAX(event_timestamp) AS max_event_timestamp,
+  COUNT(DISTINCT session_key) AS unique_sessions,
+  COUNT(DISTINCT user_id) AS unique_users
+FROM ${ref("transactions")}
+WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND event_date < CURRENT_DATE()
+GROUP BY event_date
+
+UNION ALL
+
+-- Log execution metadata for ecommerce_items
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'ecommerce_items' AS model_name,
+  event_date,
+  COUNT(*) AS row_count,
+  MIN(event_timestamp) AS min_event_timestamp,
+  MAX(event_timestamp) AS max_event_timestamp,
+  COUNT(DISTINCT session_key) AS unique_sessions,
+  COUNT(DISTINCT user_id) AS unique_users
+FROM ${ref("ecommerce_items")}
+WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND event_date < CURRENT_DATE()
+GROUP BY event_date
+`)}

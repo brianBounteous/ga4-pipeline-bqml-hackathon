@@ -189,6 +189,45 @@ const CUSTOM_ITEMS_PARAMS = [
 ];
 
 // ============================================================================
+// ECOMMERCE CONFIGURATION
+// ============================================================================
+
+/**
+ * Enable ecommerce models
+ * Set to true to enable transactions and ecommerce_items tables
+ */
+const HAS_ECOMMERCE = false;
+
+/**
+ * Transaction events that populate the transactions table
+ * These events have transaction_id and transaction-level ecommerce metrics
+ */
+const TRANSACTION_EVENTS = ['purchase', 'refund'];
+
+/**
+ * Ecommerce events with items array
+ * These events populate the ecommerce_items table
+ */
+const ECOMMERCE_ITEM_EVENTS = [
+  'purchase',
+  'refund',
+  'view_item',
+  'add_to_cart',
+  'remove_from_cart',
+  'begin_checkout',
+  'add_payment_info',
+  'add_shipping_info'
+];
+
+/**
+ * Custom item parameters to extract from items.item_params
+ * Currently using CUSTOM_ITEMS_PARAMS from base configuration
+ * Add client-specific item attributes here if needed beyond standard GA4 fields
+ */
+// Note: CUSTOM_ITEMS_PARAMS is already defined earlier in this file
+// and is used by EXTRACT_ITEMS_ARRAY() in helper.js
+
+// ============================================================================
 // EXPORT CONFIGURATION
 // ============================================================================
 
@@ -214,7 +253,13 @@ const coreConfig = {
     APP_PARAMS_ARRAY,
     CUSTOM_PARAMS_ARRAY,
     CORE_USER_PROPS_ARRAY,
-    CUSTOM_ITEMS_PARAMS
+    CUSTOM_ITEMS_PARAMS,
+
+    // Ecommerce Configuration
+    HAS_ECOMMERCE,
+    TRANSACTION_EVENTS,
+    ECOMMERCE_ITEM_EVENTS
+    
 };
 
 module.exports = {

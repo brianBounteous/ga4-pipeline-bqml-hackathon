@@ -183,6 +183,31 @@ function getScreenFieldRefs() {
   }
 }
 
+/**
+ * Gets the appropriate page/screen session key field reference
+ * Returns the correct field name based on data stream configuration
+ * @returns {string} Field reference for page/screen session key
+ */
+function getPageSessionKeyRef() {
+  const effectiveType = getEffectiveDataStreamType();
+  const consolidate = shouldConsolidateParams();
+  
+  if (effectiveType === 'web') {
+    return 'page_session_key';
+  }
+  
+  if (effectiveType === 'app') {
+    return 'screen_session_key';
+  }
+  
+  // both
+  if (consolidate) {
+    return 'screen_session_key';
+  } else {
+    return 'COALESCE(page_session_key, screen_session_key)';
+  }
+}
+
 // ============================================================================
 // STRING MANIPULATION HELPERS
 // ============================================================================
@@ -639,6 +664,7 @@ module.exports = {
   getConsolidatedFieldName,
   generateStreamFilter,
   getScreenFieldRefs,
+  getPageSessionKeyRef,
   
   // String Helpers
   REPLACE_NULL_STRING,

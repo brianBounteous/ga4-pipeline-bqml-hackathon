@@ -1,0 +1,111 @@
+config {
+  type: "table",
+  disabled: !dataform.projectConfig.vars.HAS_ECOMMERCE,
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Transaction-level ecommerce data (purchase and refund events)",
+  tags: ["daily", "ga4", "ecommerce", "reporting"],
+  dependencies: ["base_events"],
+  bigquery: {
+    partitionBy: "event_date",
+    clusterBy: ["user_id"]
+  }
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  const pageSessionKeyRef = helpers.getPageSessionKeyRef();
+  
+  // Generate event name list for WHERE clause
+  const transactionEvents = config.TRANSACTION_EVENTS
+    .map(e => `'${e}'`)
+    .join(', ');
+  
+  console.log(`[TRANSACTIONS] Building transaction-level ecommerce table`);
+  console.log(`[TRANSACTIONS] Transaction events: ${config.TRANSACTION_EVENTS.join(', ')}`);
+  console.log(`[TRANSACTIONS] Page session key field: ${pageSessionKeyRef}`);
+}
+
+WITH transaction_events AS (
+  SELECT
+    -- Keys
+    ecommerce.transaction_id,
+    event_key,
+    user_id,
+    session_key,
+    ${pageSessionKeyRef} AS page_session_key,
+    
+    -- Timestamps
+    event_date,
+    event_timestamp,
+    
+    -- Event metadata
+    event_name,
+    
+    -- Transaction metrics
+    ecommerce.purchase_revenue,
+    ecommerce.purchase_revenue_in_usd,
+    ecommerce.refund_value,
+    ecommerce.refund_value_in_usd,
+    ecommerce.shipping_value,
+    ecommerce.shipping_value_in_usd,
+    ecommerce.tax_value,
+    ecommerce.tax_value_in_usd,
+    ecommerce.total_item_quantity,
+    ecommerce.unique_items,
+    
+    -- Item IDs for reference
+    ARRAY(
+      SELECT item.item_id 
+      FROM UNNEST(items) AS item
+      WHERE item.item_id IS NOT NULL
+    ) AS item_ids,
+    
+    -- Derived flags
+    event_name = 'refund' AS is_refund
+    
+  FROM ${ref("base_events")}
+  WHERE event_name IN (${transactionEvents})
+    AND ecommerce.transaction_id IS NOT NULL
+    AND ecommerce.transaction_id != ''
+)
+
+SELECT
+  -- Keys
+  transaction_id,
+  event_key,
+  user_id,
+  session_key,
+  page_session_key,
+  
+  -- Timestamps
+  event_date,
+  event_timestamp,
+  
+  -- Event
+  event_name,
+  
+  -- Transaction metrics
+  purchase_revenue,
+  purchase_revenue_in_usd,
+  refund_value,
+  refund_value_in_usd,
+  shipping_value,
+  shipping_value_in_usd,
+  tax_value,
+  tax_value_in_usd,
+  total_item_quantity,
+  unique_items,
+  
+  -- Net revenue (purchase - refund)
+  COALESCE(purchase_revenue, 0) - COALESCE(refund_value, 0) AS net_revenue,
+  COALESCE(purchase_revenue_in_usd, 0) - COALESCE(refund_value_in_usd, 0) AS net_revenue_in_usd,
+  
+  -- Item references
+  item_ids,
+  ARRAY_LENGTH(item_ids) AS item_count,
+  
+  -- Flags
+  is_refund
+
+FROM transaction_events

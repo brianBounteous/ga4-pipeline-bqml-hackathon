@@ -2,7 +2,7 @@ config {
   type: "table",
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "Page view fact table at page-session grain with engagement metrics",
-  tags: ["daily", "ga4", "facts"],
+  tags: ["daily", "ga4", "pages", "facts", "reporting"],
   dependencies: ["base_events"],
   bigquery: {
     partitionBy: "session_date",
