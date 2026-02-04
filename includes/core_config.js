@@ -99,6 +99,16 @@ const BACKFILL_START_DATE = dataform.projectConfig.vars.BACKFILL_START_DATE || n
 const BACKFILL_END_DATE = dataform.projectConfig.vars.BACKFILL_END_DATE || null;
 
 // ============================================================================
+// USER AGGREGATION CONFIGURATION
+// ============================================================================
+
+/**
+ * Enable user-level aggregation models
+ * Set to true to enable user_identity_map and users tables
+ */
+const HAS_USER_AGGREGATION = true;
+
+// ============================================================================
 // CUSTOM TRAFFIC SOURCE DEFINITIONS
 // ============================================================================
 
@@ -235,6 +245,7 @@ const coreConfig = {
     // Property & Stream Config
     PROPERTIES_CONFIG,
     DATA_STREAM_TYPE,
+    HAS_USER_AGGREGATION,
     CONSOLIDATE_WEB_APP_PARAMS,
     
     // Load Strategy

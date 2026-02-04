@@ -136,3 +136,41 @@ WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
   AND event_date < CURRENT_DATE()
 GROUP BY event_date
 `)}
+
+${ when(config.HAS_USER_AGGREGATION, `
+UNION ALL
+
+-- Log execution metadata for user_identity_map
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'user_identity_map' AS model_name,
+  last_seen_date AS event_date,
+  COUNT(*) AS row_count,
+  NULL AS min_event_timestamp,
+  NULL AS max_event_timestamp,
+  NULL AS unique_sessions,
+  COUNT(DISTINCT user_pseudo_id) AS unique_users
+FROM ${ref("user_identity_map")}
+WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND last_seen_date < CURRENT_DATE()
+GROUP BY last_seen_date
+
+UNION ALL
+
+-- Log execution metadata for users
+SELECT
+  CURRENT_TIMESTAMP() AS load_timestamp,
+  CURRENT_DATE() AS load_date,
+  'users' AS model_name,
+  last_seen_date AS event_date,
+  COUNT(*) AS row_count,
+  NULL AS min_event_timestamp,
+  NULL AS max_event_timestamp,
+  NULL AS unique_sessions,
+  COUNT(*) AS unique_users
+FROM ${ref("users")}
+WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  AND last_seen_date < CURRENT_DATE()
+GROUP BY last_seen_date
+`)}

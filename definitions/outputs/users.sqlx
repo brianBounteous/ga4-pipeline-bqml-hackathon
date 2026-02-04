@@ -1,0 +1,279 @@
+config {
+  type: "table",
+  disabled: !dataform.projectConfig.vars.HAS_USER_AGGREGATION,
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "User-level lifetime aggregations with resolved identity",
+  tags: ["daily", "ga4", "users", "reporting"],
+  dependencies: ["base_events", "user_identity_map", "sessions"],
+  bigquery: {
+    clusterBy: ["resolved_user_id"]
+  }
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+  
+  // Get traffic source fields dynamically
+  const trafficFields = helpers.getTrafficSourceFields();
+  const trafficFieldNames = Object.keys(trafficFields);
+  
+  // Generate field selections for traffic source CTEs
+  const trafficFieldSelects = trafficFieldNames.map(f => `${f}`).join(',\n      ');
+  
+  console.log(`[USERS] Building user-level aggregations with identity resolution`);
+  console.log(`[USERS] Ecommerce enabled: ${config.HAS_ECOMMERCE}`);
+  console.log(`[USERS] Traffic source fields: ${trafficFieldNames.join(', ')}`);
+}
+
+-- Step 1: Resolve user identities
+WITH user_pseudo_resolution AS (
+  SELECT 
+    user_pseudo_id,
+    -- Best user_id: most events, then first seen (tie-breaker), then alphabetically
+    COALESCE(
+      ARRAY_AGG(
+        user_id IGNORE NULLS
+        ORDER BY event_count DESC, first_seen_timestamp ASC, user_id ASC
+        LIMIT 1
+      )[SAFE_OFFSET(0)],
+      user_pseudo_id  -- Use pseudo_id if never authenticated
+    ) AS resolved_user_id,
+    -- Track primary authenticated user_id
+    ARRAY_AGG(
+      user_id IGNORE NULLS
+      ORDER BY event_count DESC, first_seen_timestamp ASC, user_id ASC
+      LIMIT 1
+    )[SAFE_OFFSET(0)] AS primary_user_id,
+    -- Collect all associated pseudo_ids
+    ARRAY_AGG(DISTINCT user_pseudo_id IGNORE NULLS) AS user_pseudo_ids,
+    COUNT(DISTINCT user_id) - COUNTIF(user_id IS NULL) AS user_id_count
+  FROM ${ref("user_identity_map")}
+  GROUP BY user_pseudo_id
+),
+
+-- Step 2: Get resolved user ID for all events
+events_resolved AS (
+  SELECT
+    upr.resolved_user_id,
+    upr.primary_user_id,
+    e.user_pseudo_id,
+    e.event_date,
+    e.event_timestamp,
+    e.session_key,
+    e.event_name,
+    e.engagement_time_msec
+  FROM ${ref("base_events")} e
+  INNER JOIN user_pseudo_resolution upr 
+    ON COALESCE(e.user_pseudo_id, e.user_id) = upr.user_pseudo_id
+),
+
+-- Step 3: User-level aggregations
+user_metrics AS (
+  SELECT
+    resolved_user_id,
+    primary_user_id,
+    
+    -- Temporal
+    MIN(event_date) AS first_seen_date,
+    MAX(event_date) AS last_seen_date,
+    DATE_DIFF(CURRENT_DATE(), MIN(event_date), DAY) AS days_since_first_seen,
+    DATE_DIFF(CURRENT_DATE(), MAX(event_date), DAY) AS days_since_last_seen,
+    
+    -- Identity
+    ARRAY_AGG(DISTINCT user_pseudo_id IGNORE NULLS) AS user_pseudo_ids,
+    COUNT(DISTINCT user_pseudo_id) AS user_pseudo_id_count,
+    
+    -- Engagement
+    COUNT(DISTINCT session_key) AS total_sessions,
+    COUNT(*) AS total_events,
+    SUM(COALESCE(engagement_time_msec, 0)) / 1000 AS total_engagement_time_seconds,
+    COUNTIF(event_name IN ('page_view', 'screen_view')) AS total_page_views,
+    COUNT(DISTINCT event_date) AS active_days
+    
+  FROM events_resolved
+  GROUP BY resolved_user_id, primary_user_id
+),
+
+-- Step 4: First traffic source (from first session)
+first_traffic_raw AS (
+  SELECT
+    upr.resolved_user_id,
+    s.session_source,
+    s.session_medium,
+    s.session_campaign,
+    s.session_channel_group,
+    ROW_NUMBER() OVER (
+      PARTITION BY upr.resolved_user_id 
+      ORDER BY s.session_start_timestamp ASC
+    ) AS rn
+  FROM ${ref("sessions")} s
+  INNER JOIN user_pseudo_resolution upr 
+    ON s.user_id = upr.user_pseudo_id
+),
+
+first_traffic AS (
+  SELECT
+    resolved_user_id,
+    ${trafficFieldNames.map(f => f).join(',\n    ')}
+  FROM first_traffic_raw
+  WHERE rn = 1
+),
+
+-- Step 5: Last non-direct traffic source
+last_non_direct_raw AS (
+  SELECT
+    upr.resolved_user_id,
+    s.session_source,
+    s.session_medium,
+    s.session_campaign,
+    s.session_channel_group,
+    ROW_NUMBER() OVER (
+      PARTITION BY upr.resolved_user_id 
+      ORDER BY s.session_start_timestamp DESC
+    ) AS rn
+  FROM ${ref("sessions")} s
+  INNER JOIN user_pseudo_resolution upr 
+    ON s.user_id = upr.user_pseudo_id
+  WHERE s.session_source NOT IN ('(direct)', '(not set)', '')
+    AND s.session_medium NOT IN ('(none)', '(not set)', '')
+),
+
+last_non_direct AS (
+  SELECT
+    resolved_user_id,
+    ${trafficFieldNames.map(f => f).join(',\n    ')}
+  FROM last_non_direct_raw
+  WHERE rn = 1
+),
+
+-- Step 6: Behavioral dimensions (distributions)
+user_dimensions AS (
+  SELECT
+    upr.resolved_user_id,
+    
+    -- Device category distribution
+    ARRAY_AGG(
+      STRUCT(
+        s.device_category AS value,
+        COUNT(*) AS session_count
+      )
+      ORDER BY COUNT(*) DESC
+      LIMIT 10
+    ) AS device_category_distribution,
+    
+    -- Platform distribution
+    ARRAY_AGG(
+      STRUCT(
+        s.platform AS value,
+        COUNT(*) AS session_count
+      )
+      ORDER BY COUNT(*) DESC
+      LIMIT 10
+    ) AS platform_distribution,
+    
+    -- Country distribution
+    ARRAY_AGG(
+      STRUCT(
+        s.country AS value,
+        COUNT(*) AS session_count
+      )
+      ORDER BY COUNT(*) DESC
+      LIMIT 10
+    ) AS country_distribution,
+    
+    -- Metro distribution
+    ARRAY_AGG(
+      STRUCT(
+        s.metro AS value,
+        COUNT(*) AS session_count
+      )
+      ORDER BY COUNT(*) DESC
+      LIMIT 10
+    ) AS metro_distribution
+    
+  FROM ${ref("sessions")} s
+  INNER JOIN user_pseudo_resolution upr 
+    ON s.user_id = upr.user_pseudo_id
+  GROUP BY 
+    upr.resolved_user_id,
+    s.device_category,
+    s.platform,
+    s.country,
+    s.metro
+  GROUP BY upr.resolved_user_id
+)
+
+${ when(config.HAS_ECOMMERCE, `,
+
+-- Step 7: Ecommerce metrics
+ecommerce_metrics AS (
+  SELECT
+    upr.resolved_user_id,
+    SUM(t.net_revenue_in_usd) AS lifetime_revenue_usd,
+    SUM(t.net_revenue) AS lifetime_revenue,
+    COUNT(DISTINCT t.transaction_id) AS total_transactions,
+    MIN(CASE WHEN t.event_name = 'purchase' THEN t.event_date END) AS first_purchase_date,
+    MAX(CASE WHEN t.event_name = 'purchase' THEN t.event_date END) AS last_purchase_date,
+    AVG(CASE WHEN t.event_name = 'purchase' THEN t.net_revenue_in_usd END) AS average_order_value_usd
+  FROM ${ref("transactions")} t
+  INNER JOIN user_pseudo_resolution upr 
+    ON COALESCE(t.user_id, t.user_pseudo_id) = upr.user_pseudo_id
+  GROUP BY upr.resolved_user_id
+)
+`)}
+
+-- Final: Join all metrics together
+SELECT
+  -- Core Identity
+  um.resolved_user_id,
+  um.primary_user_id,
+  um.user_pseudo_ids,
+  um.user_pseudo_id_count,
+  
+  -- Temporal
+  um.first_seen_date,
+  um.last_seen_date,
+  um.days_since_first_seen,
+  um.days_since_last_seen,
+  
+  -- Engagement Aggregates
+  um.total_sessions,
+  um.total_events,
+  um.total_engagement_time_seconds,
+  um.total_page_views,
+  um.active_days,
+  
+  -- First traffic attribution
+  ${trafficFieldNames.map(f => `ft.${f} AS first_${f}`).join(',\n  ')},
+  
+  -- Last non-direct traffic attribution
+  ${trafficFieldNames.map(f => `lnd.${f} AS last_non_direct_${f}`).join(',\n  ')},
+  
+  -- Behavioral Dimensions (distributions)
+  ud.device_category_distribution,
+  ud.platform_distribution,
+  ud.country_distribution,
+  ud.metro_distribution
+  
+  ${ when(config.HAS_ECOMMERCE, `,
+  -- Ecommerce Metrics
+  COALESCE(em.lifetime_revenue_usd, 0) AS lifetime_revenue_usd,
+  COALESCE(em.lifetime_revenue, 0) AS lifetime_revenue,
+  COALESCE(em.total_transactions, 0) AS total_transactions,
+  em.first_purchase_date,
+  em.last_purchase_date,
+  DATE_DIFF(em.first_purchase_date, um.first_seen_date, DAY) AS days_to_first_purchase,
+  em.average_order_value_usd,
+  
+  -- Ecommerce Flags
+  em.lifetime_revenue_usd > 0 AS is_converter
+  `)}
+
+FROM user_metrics um
+LEFT JOIN first_traffic ft ON um.resolved_user_id = ft.resolved_user_id
+LEFT JOIN last_non_direct lnd ON um.resolved_user_id = lnd.resolved_user_id
+LEFT JOIN user_dimensions ud ON um.resolved_user_id = ud.resolved_user_id
+${ when(config.HAS_ECOMMERCE, `
+LEFT JOIN ecommerce_metrics em ON um.resolved_user_id = em.resolved_user_id
+`)}
