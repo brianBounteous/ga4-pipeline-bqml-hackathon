@@ -5,7 +5,7 @@ config {
   tags: ["daily", "ga4", "pages", "facts", "reporting"],
   dependencies: ["base_events"],
   bigquery: {
-    partitionBy: "session_date",
+    partitionBy: "event_date",
     clusterBy: ["page_key", "session_key"]
   }
 }
@@ -157,7 +157,7 @@ SELECT
   user_pseudo_id,
   
   -- Date (for partitioning)
-  session_date,
+  event_date,
   
   -- Page attributes (denormalized for convenience)
   page_location,
