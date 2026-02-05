@@ -143,57 +143,46 @@ last_non_direct AS (
 -- Step 6: Behavioral dimensions (distributions)
 user_dimensions AS (
   SELECT
-    upr.resolved_user_id,
-    
-    -- Device category distribution
+    resolved_user_id,
     ARRAY_AGG(
-      STRUCT(
-        s.device_category AS value,
-        COUNT(*) AS session_count
-      )
-      ORDER BY COUNT(*) DESC
+      STRUCT(device_category AS value, session_count)
+      ORDER BY session_count DESC
       LIMIT 10
     ) AS device_category_distribution,
-    
-    -- Platform distribution
     ARRAY_AGG(
-      STRUCT(
-        s.platform AS value,
-        COUNT(*) AS session_count
-      )
-      ORDER BY COUNT(*) DESC
+      STRUCT(platform AS value, session_count)
+      ORDER BY session_count DESC
       LIMIT 10
     ) AS platform_distribution,
-    
-    -- Country distribution
     ARRAY_AGG(
-      STRUCT(
-        s.country AS value,
-        COUNT(*) AS session_count
-      )
-      ORDER BY COUNT(*) DESC
+      STRUCT(country AS value, session_count)
+      ORDER BY session_count DESC
       LIMIT 10
     ) AS country_distribution,
-    
-    -- Metro distribution
     ARRAY_AGG(
-      STRUCT(
-        s.metro AS value,
-        COUNT(*) AS session_count
-      )
-      ORDER BY COUNT(*) DESC
+      STRUCT(metro AS value, session_count)
+      ORDER BY session_count DESC
       LIMIT 10
     ) AS metro_distribution
-    
-  FROM ${ref("sessions")} s
-  INNER JOIN user_pseudo_resolution upr 
-    ON s.user_id = upr.user_pseudo_id
-  GROUP BY 
-    upr.resolved_user_id,
-    s.device_category,
-    s.platform,
-    s.country,
-    s.metro
+  FROM (
+    SELECT
+      upr.resolved_user_id,
+      s.device_category,
+      s.platform,
+      s.country,
+      s.metro,
+      COUNT(*) AS session_count
+    FROM ${ref("sessions")} s
+    INNER JOIN user_pseudo_resolution upr 
+      ON s.user_id = upr.user_pseudo_id
+    GROUP BY
+      upr.resolved_user_id,
+      s.device_category,
+      s.platform,
+      s.country,
+      s.metro
+  )
+  GROUP BY resolved_user_id
 )
 
 ${ when(config.HAS_ECOMMERCE, `,
