@@ -18,7 +18,11 @@ js {
     'base_events',
     'sessions',
     'dim_pages',
-    'fct_page_views'
+    'fct_page_views',
+    "transactions",      
+    "ecommerce_items", 
+    "user_identity_map", 
+    "users"              
   ];
   
   // Add ecommerce models if enabled

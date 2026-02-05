@@ -117,7 +117,7 @@ const HAS_USER_AGGREGATION = true;
  * false: Use default GA4 traffic source fields as-is
  * true: Use custom traffic source logic defined in helper.js
  */
-const USE_CUSTOM_TRAFFIC_SOURCE_LOGIC = false;
+const USE_CUSTOM_TRAFFIC_SOURCE_LOGIC = true;
 
 // ============================================================================
 // PARAMETER EXTRACTION CONFIGURATION
@@ -206,7 +206,7 @@ const CUSTOM_ITEMS_PARAMS = [
  * Enable ecommerce models
  * Set to true to enable transactions and ecommerce_items tables
  */
-const HAS_ECOMMERCE = false;
+const HAS_ECOMMERCE = true;
 
 /**
  * Transaction events that populate the transactions table
