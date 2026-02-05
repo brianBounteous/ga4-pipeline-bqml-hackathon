@@ -47,4 +47,3 @@ SELECT
   active_days,
   CURRENT_TIMESTAMP() AS last_updated_timestamp
 FROM identity_edges
-ORDER BY user_pseudo_id, event_count DESC

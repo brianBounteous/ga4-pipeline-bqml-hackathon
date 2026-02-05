@@ -15,6 +15,7 @@ js {
   const helpers = require('includes/helper.js');
   const config = helpers.getConfig();
   const pageSessionKeyRef = helpers.getPageSessionKeyRef();
+  const hasCustomItemParams = config.CUSTOM_ITEMS_PARAMS && config.CUSTOM_ITEMS_PARAMS.length > 0;
   
   // Generate event name list for WHERE clause
   const ecommerceEvents = config.ECOMMERCE_ITEM_EVENTS
@@ -74,7 +75,7 @@ SELECT
   items.creative_slot,
   
   -- Custom item parameters (if configured)
-  items.item_params_custom,
+  ${hasCustomItemParams ? 'items.item_params_custom,' : ''}
   
   -- Transaction context (for purchases/refunds)
   ecommerce.purchase_revenue AS transaction_revenue,
