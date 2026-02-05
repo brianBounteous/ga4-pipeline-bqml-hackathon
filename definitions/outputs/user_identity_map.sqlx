@@ -1,6 +1,5 @@
 config {
   type: "table",
-  disabled: !dataform.projectConfig.vars.HAS_USER_AGGREGATION,
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "User identity resolution mapping tracking relationships between user_pseudo_id and user_id",
   tags: ["daily", "ga4", "users"],

@@ -6,4 +6,5 @@ vars:
     SOURCE_DATASET: analytics_452829362
     SOURCE_PROJECT: server-side-bounteous-ga4-2024
     SOURCE_TABLE_PREFIX: events_
-    ENVIRONMENT: prod  # This can be overridden in release configs
+    ENVIRONMENT: prod  
+    HAS_ECOMMERCE: 'true'

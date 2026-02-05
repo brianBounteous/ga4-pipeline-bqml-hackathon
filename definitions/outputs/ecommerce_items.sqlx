@@ -1,6 +1,6 @@
 config {
   type: "table",
-  disabled: !dataform.projectConfig.vars.HAS_ECOMMERCE,
+  disabled: dataform.projectConfig.vars.HAS_ECOMMERCE !== 'true',
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "Item-level ecommerce data from all ecommerce events (wide table with facts and dimensions)",
   tags: ["daily", "ga4", "ecommerce", "reporting"],

@@ -99,16 +99,6 @@ const BACKFILL_START_DATE = dataform.projectConfig.vars.BACKFILL_START_DATE || n
 const BACKFILL_END_DATE = dataform.projectConfig.vars.BACKFILL_END_DATE || null;
 
 // ============================================================================
-// USER AGGREGATION CONFIGURATION
-// ============================================================================
-
-/**
- * Enable user-level aggregation models
- * Set to true to enable user_identity_map and users tables
- */
-const HAS_USER_AGGREGATION = true;
-
-// ============================================================================
 // CUSTOM TRAFFIC SOURCE DEFINITIONS
 // ============================================================================
 
@@ -204,9 +194,10 @@ const CUSTOM_ITEMS_PARAMS = [
 
 /**
  * Enable ecommerce models
- * Set to true to enable transactions and ecommerce_items tables
+ * Controlled via workflow_settings.yaml or release compilation variables
+ * Set to 'true' (string) to enable transactions and ecommerce_items tables
  */
-const HAS_ECOMMERCE = true;
+const HAS_ECOMMERCE = dataform.projectConfig.vars.HAS_ECOMMERCE === 'true';
 
 /**
  * Transaction events that populate the transactions table
@@ -245,7 +236,6 @@ const coreConfig = {
     // Property & Stream Config
     PROPERTIES_CONFIG,
     DATA_STREAM_TYPE,
-    HAS_USER_AGGREGATION,
     CONSOLIDATE_WEB_APP_PARAMS,
     
     // Load Strategy

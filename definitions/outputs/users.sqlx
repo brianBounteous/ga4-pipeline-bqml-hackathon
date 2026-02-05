@@ -1,6 +1,5 @@
 config {
   type: "table",
-  disabled: !dataform.projectConfig.vars.HAS_USER_AGGREGATION,
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "User-level lifetime aggregations with resolved identity",
   tags: ["daily", "ga4", "users", "reporting"],
@@ -201,7 +200,6 @@ user_dimensions AS (
     s.platform,
     s.country,
     s.metro
-  GROUP BY upr.resolved_user_id
 )
 
 ${ when(config.HAS_ECOMMERCE, `,
