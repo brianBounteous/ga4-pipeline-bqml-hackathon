@@ -98,10 +98,7 @@ user_metrics AS (
 first_traffic_raw AS (
   SELECT
     upr.resolved_user_id,
-    s.session_source,
-    s.session_medium,
-    s.session_campaign,
-    s.session_channel_group,
+    ${trafficFieldNames.map(f => `s.${f}`).join(',\n    ')},
     ROW_NUMBER() OVER (
       PARTITION BY upr.resolved_user_id 
       ORDER BY s.session_start_timestamp ASC
@@ -123,10 +120,7 @@ first_traffic AS (
 last_non_direct_raw AS (
   SELECT
     upr.resolved_user_id,
-    s.session_source,
-    s.session_medium,
-    s.session_campaign,
-    s.session_channel_group,
+    ${trafficFieldNames.map(f => `s.${f}`).join(',\n    ')},
     ROW_NUMBER() OVER (
       PARTITION BY upr.resolved_user_id 
       ORDER BY s.session_start_timestamp DESC
