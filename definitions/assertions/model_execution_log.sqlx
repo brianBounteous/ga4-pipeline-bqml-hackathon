@@ -96,7 +96,7 @@ SELECT
   CURRENT_TIMESTAMP() AS load_timestamp,
   CURRENT_DATE() AS load_date,
   'fct_page_views' AS model_name,
-  session_date AS event_date,
+  event_date,
   COUNT(*) AS row_count,
   NULL AS min_event_timestamp,
   NULL AS max_event_timestamp,
