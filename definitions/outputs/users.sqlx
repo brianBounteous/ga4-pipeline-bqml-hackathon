@@ -12,9 +12,10 @@ config {
 js {
   const helpers = require('includes/helper.js');
   const config = helpers.getConfig();
-  
+  const trafficSrc = require('includes/traffic_source.js');
+
   // Get traffic source fields dynamically
-  const trafficFields = helpers.getTrafficSourceFields();
+  const trafficFields = trafficSrc.getTrafficSourceFields();
   const trafficFieldNames = Object.keys(trafficFields);
   
   console.log(`[USERS] Building user-level aggregations with identity resolution`);
