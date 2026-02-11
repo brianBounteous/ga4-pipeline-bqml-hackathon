@@ -74,7 +74,7 @@ const USE_FRESH_DAILY = false;
  * false: Use default GA4 traffic source fields as-is
  * true: Use custom traffic source logic defined in traffic_source.js
  */
-const USE_CUSTOM_TRAFFIC_SOURCE_LOGIC = true;
+const USE_CUSTOM_TRAFFIC_SOURCE_LOGIC = false;
 
 // ============================================================================
 // PARAMETER EXTRACTION CONFIGURATION
