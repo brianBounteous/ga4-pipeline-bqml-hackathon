@@ -15,11 +15,14 @@ js {
   const config = helpers.getConfig();
   const effectiveDataStreamType = helpers.getEffectiveDataStreamType();
   const screenFields = helpers.getScreenFieldRefs();
-  
+
+  // In the js {} block, add:
+  const trafficSrc = require('includes/traffic_source.js');
+
   // Get traffic source SQL generators
-  const trafficSourceSelectSQL = helpers.getTrafficSourceSelectSQL();
-  const trafficSourceColumnList = helpers.getTrafficSourceColumnList();
-  const trafficSourceAggregateSQL = helpers.getTrafficSourceAggregateSQL();
+  const trafficSourceSelectSQL = trafficSrc.getTrafficSourceSelectSQL();
+  const trafficSourceColumnList = trafficSrc.getTrafficSourceColumnList();
+  const trafficSourceAggregateSQL = trafficSrc.getTrafficSourceAggregateSQL();
   
   console.log(`[GA4_SESSIONS] Building session aggregation table`);
   console.log(`[GA4_SESSIONS] Effective data stream type: ${effectiveDataStreamType}`);

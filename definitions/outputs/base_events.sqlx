@@ -15,6 +15,7 @@ js {
   const config = helpers.getConfig();
   const effectiveDataStreamType = helpers.getEffectiveDataStreamType();
   const shouldConsolidate = helpers.shouldConsolidateParams();
+  const sqlGen = require('includes/sql_generators.js');
   
   let dateFilter;
   let sourceTable;
@@ -133,24 +134,24 @@ processed_events AS (
         batch_page_id,
 
         -- Core Event Parameters (always extracted)
-        ${helpers.EXTRACT_EVENT_PARAMS('event_params')}
+        ${sqlGen.EXTRACT_EVENT_PARAMS('event_params')}
         
         -- Web-specific parameters
         ${ when(effectiveDataStreamType === 'web' || effectiveDataStreamType === 'both',
             `,
-        ${helpers.EXTRACT_WEB_PARAMS('event_params')}`
+        ${sqlGen.EXTRACT_WEB_PARAMS('event_params')}`
         )}
         
         -- App-specific parameters
         ${ when(effectiveDataStreamType === 'app' || effectiveDataStreamType === 'both',
             `,
-        ${helpers.EXTRACT_APP_PARAMS('event_params')}`
+        ${sqlGen.EXTRACT_APP_PARAMS('event_params')}`
         )}
         
         -- Custom event parameters (always extracted)
         ${ when(config.CUSTOM_PARAMS_ARRAY.length > 0,
             `,
-        ${helpers.EXTRACT_CUSTOM_PARAMS('event_params')}`
+        ${sqlGen.EXTRACT_CUSTOM_PARAMS('event_params')}`
         )},
 
         event_value_in_usd,
@@ -166,7 +167,7 @@ processed_events AS (
         ) AS privacy_info,
 
         -- Custom User Properties
-        ${helpers.EXTRACT_USER_PROPS('user_properties')},
+        ${sqlGen.EXTRACT_USER_PROPS('user_properties')},
 
         user_first_touch_timestamp,
         
@@ -342,7 +343,7 @@ processed_events AS (
         ) AS session_traffic_source_last_click,
 
         -- Items array
-        ${helpers.EXTRACT_ITEMS_ARRAY()}
+        ${sqlGen.EXTRACT_ITEMS_ARRAY()}
 
     FROM raw_data
 ),
@@ -351,7 +352,7 @@ ${ when(shouldConsolidate, `
 consolidated_params AS (
     SELECT
         *,
-        ${helpers.CONSOLIDATE_PARAMS()}
+        ${sqlGen.CONSOLIDATE_PARAMS()}
     FROM processed_events
 ),
 `) }
@@ -369,7 +370,7 @@ keys_added AS (
         
         -- Event Key: globally unique hash
         TO_BASE64(MD5(CONCAT(
-            ${helpers.GENERATE_EVENT_KEY_CONCAT()}
+            ${sqlGen.GENERATE_EVENT_KEY_CONCAT()}
         ))) AS event_key,
         
         -- Page/App/Screen structs based on data stream type
