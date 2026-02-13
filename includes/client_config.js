@@ -29,7 +29,23 @@
  *   }
  * }
  */
-const PROPERTIES_CONFIG = null;
+
+const PROPERTIES_CONFIG = {
+   'noodles_platform': {
+     source_dataset: 'noodles_ga4_data',
+     streams: {
+       '1565017554': { include: true, stream_type: 'app' },
+       '2264464125': { include: true, stream_type: 'web' },
+       '1565203175': { include: true, stream_type: 'app' },
+     }
+   },
+   'bnts_web': {
+     source_dataset: 'analytics_452829362',
+     streams: {
+      '5555555555': { include: true, stream_type: 'app', use_fresh_daily: false }
+      }
+    }
+};
 
 // Example multi-property configuration:
 // const PROPERTIES_CONFIG = {
@@ -52,7 +68,7 @@ const PROPERTIES_CONFIG = null;
  * Default data stream type (used when PROPERTIES_CONFIG is null)
  * Options: 'web', 'app', or 'both'
  */
-const DATA_STREAM_TYPE = 'web';
+const DATA_STREAM_TYPE = 'both';
 
 /**
  * Parameter consolidation for combined web/app streams
@@ -60,7 +76,7 @@ const DATA_STREAM_TYPE = 'web';
  * true: Consolidates parameters (page_location + firebase_screen → screen_location)
  * false: Keeps web and app parameters separate in their respective STRUCTs
  */
-const CONSOLIDATE_WEB_APP_PARAMS = false;
+const CONSOLIDATE_WEB_APP_PARAMS = true;
 
 /**
  * Fresh daily table usage
