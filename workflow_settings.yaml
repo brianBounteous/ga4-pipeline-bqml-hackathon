@@ -1,10 +1,10 @@
 defaultDataset: ga4_reporting
 defaultLocation: US
-defaultProject: server-side-bounteous-ga4-2024
+defaultProject: ibqml-hackathon-noodles
 vars: 
     DESTINATION_DATASET: ga4_reporting
-    SOURCE_DATASET: analytics_452829362
-    SOURCE_PROJECT: server-side-bounteous-ga4-2024
+    SOURCE_DATASET: noodles_ga4_data
+    SOURCE_PROJECT: ibqml-hackathon-noodles
     SOURCE_TABLE_PREFIX: events_
     ENVIRONMENT: prod  
     HAS_ECOMMERCE: 'true'
