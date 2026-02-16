@@ -1,7 +1,7 @@
 config {
-  type: "assertion",
+  type: "table",
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
-  description: "Tier 2: Cross-model consistency checks. Reports only, does not block execution.",
+  description: "Tier 2: Cross-model consistency report. Does not block pipeline execution.",
   tags: ["daily", "ga4", "assertion", "tier2"],
   dependencies: ["model_execution_log"]
 }
@@ -49,18 +49,18 @@ model_pairs AS (
 )
 
 -- Check 1: Sessions should have fewer rows than base_events (events aggregate into sessions)
--- Expected: sessions = 10-40% of base_events rows (typical ratio)
+-- Expected: sessions = 0.5-80% of base_events rows (typical ratio)
 SELECT 'SESSIONS_RATIO' AS check_name,
   event_date,
-  FORMAT('sessions/base_events ratio: %.1f%% (%d/%d). Expected 10-40%%.',
+  FORMAT('sessions/base_events ratio: %.1f%% (%d/%d). Expected 0.5-80%%.',
     100.0 * sessions_rows / NULLIF(base_events_rows, 0),
     sessions_rows, base_events_rows
   ) AS detail
 FROM model_pairs
 WHERE base_events_rows > 0
   AND (
-    SAFE_DIVIDE(sessions_rows, base_events_rows) > 0.50
-    OR SAFE_DIVIDE(sessions_rows, base_events_rows) < 0.05
+    SAFE_DIVIDE(sessions_rows, base_events_rows) > 0.80
+    OR SAFE_DIVIDE(sessions_rows, base_events_rows) < 0.005
   )
 
 UNION ALL

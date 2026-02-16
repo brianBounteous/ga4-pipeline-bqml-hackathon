@@ -99,6 +99,12 @@ REGEXP_REPLACE(
 - Perform a **thorough audit** before merging feature branches
 - PRs require human review before merge
 
+### Claude Code Permissions
+
+- **Code changes:** Always show proposed changes and wait for approval before writing to files
+- **Git operations:** Once given approval to commit, execute the full cycle (add, commit, push) without pausing for permission at each step
+- **Branch creation:** Create feature branches without asking, following the naming convention `feature/description`
+
 ## Testing & QA
 
 ### After Each Commit (Light Testing)

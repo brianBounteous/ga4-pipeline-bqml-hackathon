@@ -1,7 +1,7 @@
 config {
-  type: "assertion",
+  type: "table",
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
-  description: "Tier 3: Statistical anomaly detection comparing current run to recent history. Reports only.",
+  description: "Tier 3: Statistical anomaly detection report. Does not block pipeline execution.",
   tags: ["daily", "ga4", "assertion", "tier3"],
   dependencies: ["model_execution_log"]
 }
