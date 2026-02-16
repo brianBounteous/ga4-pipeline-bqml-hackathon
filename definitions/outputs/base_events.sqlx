@@ -16,12 +16,126 @@ js {
   const effectiveDataStreamType = helpers.getEffectiveDataStreamType();
   const shouldConsolidate = helpers.shouldConsolidateParams();
   const sqlGen = require('includes/sql_generators.js');
-  
+
+  // ============================================================================
+  // MULTI-PROPERTY SUPPORT
+  // ============================================================================
+
+  /**
+   * Generates SQL for a single property's data source
+   * Handles backfill, mixed sources, and stream filtering
+   */
+  function generatePropertySQL(propertyName, property, isIncremental) {
+    const sourceProject = dataform.projectConfig.vars.SOURCE_PROJECT;
+    const sourceDataset = property.source_dataset;
+    const streamFilter = helpers.generateStreamFilter(propertyName);
+
+    // Determine if this property uses fresh_daily
+    const useFreshDaily = property.use_fresh_daily !== undefined
+      ? property.use_fresh_daily
+      : config.USE_FRESH_DAILY;
+
+    // Backfill mode
+    if (!isIncremental && config.FORCE_FULL_BACKFILL) {
+      const startDate = helpers.GET_BACKFILL_START_DATE();
+      const endDate = helpers.GET_BACKFILL_END_DATE();
+      const startDateSQL = startDate.includes('FORMAT_DATE') ? `(${startDate})` : `'${startDate}'`;
+      const endDateSQL = endDate.includes('FORMAT_DATE') ? `(${endDate})` : `'${endDate}'`;
+
+      return `
+      SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+      WHERE _TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}
+        AND (${streamFilter})`;
+    }
+
+    // Mixed sources mode
+    if (useFreshDaily) {
+      if (!isIncremental) {
+        // Initial load with mixed sources
+        return `
+        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_fresh_daily_*\`
+        WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
+                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+          AND (${streamFilter})
+
+        UNION ALL
+
+        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+        WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
+          AND _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
+                                AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+          AND (${streamFilter})`;
+      } else {
+        // Incremental with mixed sources
+        return `
+        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_fresh_daily_*\`
+        WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
+                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+          AND (${streamFilter})
+
+        UNION ALL
+
+        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+        WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
+          AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+          AND (${streamFilter})`;
+      }
+    }
+
+    // Single source mode
+    let dateFilter;
+    if (!isIncremental) {
+      dateFilter = `_TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
+                    AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+        AND _TABLE_SUFFIX NOT LIKE 'intraday%'`;
+    } else {
+      dateFilter = `_TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+                    AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))`;
+    }
+
+    return `
+      SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+      WHERE ${dateFilter}
+        AND (${streamFilter})`;
+  }
+
+  // ============================================================================
+  // GENERATE RAW DATA SQL
+  // ============================================================================
+
+  let rawDataSQL;
+
+  if (helpers.isAdvancedMode()) {
+    // Advanced mode: UNION ALL across all properties
+    console.log('[BASE_EVENTS] Advanced mode: constructing UNION ALL across properties');
+    const isIncremental = incremental();
+
+    const propertySQLs = Object.keys(config.PROPERTIES_CONFIG).map(propertyName => {
+      const property = config.PROPERTIES_CONFIG[propertyName];
+      console.log(`[BASE_EVENTS] Property: ${propertyName}, Dataset: ${property.source_dataset}`);
+      return generatePropertySQL(propertyName, property, isIncremental);
+    });
+
+    rawDataSQL = propertySQLs.join('\n\nUNION ALL\n\n');
+
+    console.log(`[BASE_EVENTS] Effective data stream type: ${effectiveDataStreamType}`);
+    if (effectiveDataStreamType === 'both') {
+      console.log(`[BASE_EVENTS] Consolidate web/app params: ${shouldConsolidate}`);
+    }
+  } else {
+    // Simple mode: original logic (unchanged)
+    rawDataSQL = null; // Will use existing when() logic below
+  }
+
+  // ============================================================================
+  // SIMPLE MODE VARIABLES (unchanged)
+  // ============================================================================
+
   let dateFilter;
   let sourceTable;
   let useMixedSources = false;
-  
-  if (!incremental()) {
+
+  if (!helpers.isAdvancedMode() && !incremental()) {
     // Table doesn't exist - determine initial load strategy
     
     if (config.FORCE_FULL_BACKFILL) {
@@ -82,43 +196,49 @@ js {
 }
 
 WITH raw_data AS (
-  ${ when(useMixedSources && !config.FORCE_FULL_BACKFILL,
+  ${ when(helpers.isAdvancedMode(),
     `
-    -- Mixed sources strategy
-    ${ when(!incremental(),
+    -- Advanced mode: UNION ALL across multiple properties
+    ${rawDataSQL}
+    `,
+    when(useMixedSources && !config.FORCE_FULL_BACKFILL,
       `
-      -- Initial load: Days 1-2 from fresh_daily, Days 3-7 from events_*
-      SELECT * FROM ${ref("events_fresh_daily_*")}
-      WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
-                               AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
-      
-      UNION ALL
-      
-      SELECT * FROM ${ref("events_*")}
-      WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
-        AND _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
-                              AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+      -- Mixed sources strategy
+      ${ when(!incremental(),
+        `
+        -- Initial load: Days 1-2 from fresh_daily, Days 3-7 from events_*
+        SELECT * FROM ${ref("events_fresh_daily_*")}
+        WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
+                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+
+        UNION ALL
+
+        SELECT * FROM ${ref("events_*")}
+        WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
+          AND _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
+                                AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+        `,
+        `
+        -- Incremental: Days 1-2 from fresh_daily, Day 3 from events_*
+        SELECT * FROM ${ref("events_fresh_daily_*")}
+        WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
+                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
+
+        UNION ALL
+
+        SELECT * FROM ${ref("events_*")}
+        WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
+          AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+        `
+      )}
       `,
       `
-      -- Incremental: Days 1-2 from fresh_daily, Day 3 from events_*
-      SELECT * FROM ${ref("events_fresh_daily_*")}
-      WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
-                               AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
-      
-      UNION ALL
-      
-      SELECT * FROM ${ref("events_*")}
-      WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
-        AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
+      -- Single source strategy
+      SELECT * FROM ${sourceTable}
+      WHERE ${dateFilter}
+        ${ when(!incremental() && !config.FORCE_FULL_BACKFILL, `AND _TABLE_SUFFIX NOT LIKE 'intraday%'`) }
       `
-    )}
-    `,
-    `
-    -- Single source strategy
-    SELECT * FROM ${sourceTable}
-    WHERE ${dateFilter}
-      ${ when(!incremental() && !config.FORCE_FULL_BACKFILL, `AND _TABLE_SUFFIX NOT LIKE 'intraday%'`) }
-    `
+    )
   )}
 ),
 
