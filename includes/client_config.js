@@ -30,22 +30,7 @@
  * }
  */
 
-const PROPERTIES_CONFIG = {
-   'noodles_platform': {
-     source_dataset: 'noodles_ga4_data',
-     streams: {
-       '1565017554': { include: true, stream_type: 'app' },
-       '2264464125': { include: true, stream_type: 'web' },
-       '1565203175': { include: true, stream_type: 'app' },
-     }
-   },
-   'bnts_web': {
-     source_dataset: 'analytics_452829362',
-     streams: {
-      '5555555555': { include: true, stream_type: 'app', use_fresh_daily: false }
-      }
-    }
-};
+const PROPERTIES_CONFIG = null;
 
 // Example multi-property configuration:
 // const PROPERTIES_CONFIG = {
