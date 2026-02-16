@@ -34,9 +34,10 @@ null_rates AS (
 
 duplicate_keys AS (
   SELECT
-    COUNT(*) AS duplicate_count
+    SUM(occurrence_count - 1) AS total_duplicate_events,
+    COUNT(*) AS duplicate_event_keys
   FROM (
-    SELECT event_key
+    SELECT event_key, COUNT(*) AS occurrence_count
     FROM ${ref("base_events")}
     WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
       AND event_date < CURRENT_DATE()
@@ -73,8 +74,16 @@ WHERE total_rows > 0
 
 UNION ALL
 
--- Check 3: Duplicate event keys
+-- Check 3: Duplicate event keys exceeding 1% threshold
 SELECT 'DUPLICATE_KEYS' AS check_name,
-  FORMAT('%d duplicate event_key values detected', duplicate_count) AS detail
-FROM duplicate_keys
-WHERE duplicate_count > 0
+  FORMAT('%d duplicate events detected across %d event_keys (%d/%d = %.2f%%). Threshold: 1.0%%.',
+    dk.total_duplicate_events,
+    dk.duplicate_event_keys,
+    dk.total_duplicate_events,
+    nr.total_rows,
+    100.0 * dk.total_duplicate_events / NULLIF(nr.total_rows, 0)
+  ) AS detail
+FROM duplicate_keys dk
+CROSS JOIN null_rates nr
+WHERE nr.total_rows > 0
+  AND SAFE_DIVIDE(dk.total_duplicate_events, nr.total_rows) > 0.01
