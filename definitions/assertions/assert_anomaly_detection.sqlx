@@ -1,0 +1,119 @@
+config {
+  type: "assertion",
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Tier 3: Statistical anomaly detection comparing current run to recent history. Reports only.",
+  tags: ["daily", "ga4", "assertion", "tier3"],
+  dependencies: ["model_execution_log"]
+}
+
+-- Compares current run metrics against 7-day trailing average from execution log history.
+-- Returns rows where metrics deviate more than 40% from the trailing average.
+-- Gracefully returns nothing if insufficient history exists.
+
+WITH history AS (
+  SELECT
+    model_name,
+    event_date,
+    load_date,
+    row_count,
+    sessions,
+    users
+  FROM ${ref("model_execution_log")}
+  WHERE load_date < CURRENT_DATE()
+    AND load_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY)
+),
+
+-- Calculate trailing averages per model (using most recent load per event_date)
+trailing_avg AS (
+  SELECT
+    model_name,
+    AVG(row_count) AS avg_row_count,
+    AVG(sessions) AS avg_sessions,
+    AVG(users) AS avg_users,
+    STDDEV(row_count) AS stddev_row_count,
+    COUNT(DISTINCT load_date) AS history_days
+  FROM (
+    -- Deduplicate: take the latest load for each model+event_date
+    SELECT *,
+      ROW_NUMBER() OVER (
+        PARTITION BY model_name, event_date
+        ORDER BY load_date DESC
+      ) AS rn
+    FROM history
+  )
+  WHERE rn = 1
+  GROUP BY model_name
+),
+
+current_run AS (
+  SELECT
+    model_name,
+    event_date,
+    row_count,
+    sessions,
+    users
+  FROM ${ref("model_execution_log")}
+  WHERE load_date = CURRENT_DATE()
+),
+
+-- Aggregate current run per model (sum across event_dates in the refresh window)
+current_totals AS (
+  SELECT
+    model_name,
+    SUM(row_count) AS total_row_count,
+    SUM(sessions) AS total_sessions,
+    SUM(users) AS total_users,
+    COUNT(*) AS dates_in_run
+  FROM current_run
+  GROUP BY model_name
+)
+
+-- Only flag anomalies when we have at least 3 days of history
+SELECT 'ROW_COUNT_ANOMALY' AS check_name,
+  ct.model_name,
+  FORMAT('Current avg rows/date: %.0f, trailing avg: %.0f (%.1f%% deviation). Threshold: 40%%.',
+    ct.total_row_count / NULLIF(ct.dates_in_run, 0),
+    ta.avg_row_count,
+    100.0 * ABS(ct.total_row_count / NULLIF(ct.dates_in_run, 0) - ta.avg_row_count)
+      / NULLIF(ta.avg_row_count, 0)
+  ) AS detail
+FROM current_totals ct
+JOIN trailing_avg ta ON ct.model_name = ta.model_name
+WHERE ta.history_days >= 3
+  AND ta.avg_row_count > 0
+  AND ABS(ct.total_row_count / NULLIF(ct.dates_in_run, 0) - ta.avg_row_count)
+    / NULLIF(ta.avg_row_count, 0) > 0.40
+
+UNION ALL
+
+SELECT 'SESSION_COUNT_ANOMALY' AS check_name,
+  ct.model_name,
+  FORMAT('Current avg sessions/date: %.0f, trailing avg: %.0f (%.1f%% deviation). Threshold: 40%%.',
+    ct.total_sessions / NULLIF(ct.dates_in_run, 0),
+    ta.avg_sessions,
+    100.0 * ABS(ct.total_sessions / NULLIF(ct.dates_in_run, 0) - ta.avg_sessions)
+      / NULLIF(ta.avg_sessions, 0)
+  ) AS detail
+FROM current_totals ct
+JOIN trailing_avg ta ON ct.model_name = ta.model_name
+WHERE ta.history_days >= 3
+  AND ta.avg_sessions > 0
+  AND ABS(ct.total_sessions / NULLIF(ct.dates_in_run, 0) - ta.avg_sessions)
+    / NULLIF(ta.avg_sessions, 0) > 0.40
+
+UNION ALL
+
+SELECT 'USER_COUNT_ANOMALY' AS check_name,
+  ct.model_name,
+  FORMAT('Current avg users/date: %.0f, trailing avg: %.0f (%.1f%% deviation). Threshold: 40%%.',
+    ct.total_users / NULLIF(ct.dates_in_run, 0),
+    ta.avg_users,
+    100.0 * ABS(ct.total_users / NULLIF(ct.dates_in_run, 0) - ta.avg_users)
+      / NULLIF(ta.avg_users, 0)
+  ) AS detail
+FROM current_totals ct
+JOIN trailing_avg ta ON ct.model_name = ta.model_name
+WHERE ta.history_days >= 3
+  AND ta.avg_users > 0
+  AND ABS(ct.total_users / NULLIF(ct.dates_in_run, 0) - ta.avg_users)
+    / NULLIF(ta.avg_users, 0) > 0.40

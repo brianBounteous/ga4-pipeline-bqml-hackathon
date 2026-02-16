@@ -3,7 +3,7 @@ config {
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "User identity resolution mapping tracking relationships between user_pseudo_id and user_id",
   tags: ["daily", "ga4", "users"],
-  dependencies: ["base_events"],
+  dependencies: ["base_events", "assert_base_events_integrity"],
   bigquery: {
     clusterBy: ["user_pseudo_id", "user_id"]
   }

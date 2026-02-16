@@ -3,7 +3,7 @@ config {
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "Page/screen dimension table with current attributes (Type 1 SCD)",
   tags: ["daily", "ga4", "pages", "dimensions", "reporting"],
-  dependencies: ["base_events"],
+  dependencies: ["base_events", "assert_base_events_integrity"],
   bigquery: {
     clusterBy: ["page_key"]
   }

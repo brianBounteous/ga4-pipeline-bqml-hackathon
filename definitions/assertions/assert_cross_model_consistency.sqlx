@@ -1,0 +1,120 @@
+config {
+  type: "assertion",
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Tier 2: Cross-model consistency checks. Reports only, does not block execution.",
+  tags: ["daily", "ga4", "assertion", "tier2"],
+  dependencies: ["model_execution_log"]
+}
+
+js {
+  const helpers = require('includes/helper.js');
+  const config = helpers.getConfig();
+}
+
+-- Compares metrics between related models from the current run.
+-- Returns rows where ratios fall outside expected bands.
+
+WITH current_run AS (
+  SELECT
+    model_name,
+    event_date,
+    row_count,
+    sessions,
+    users
+  FROM ${ref("model_execution_log")}
+  WHERE load_date = CURRENT_DATE()
+),
+
+-- Pivot to get model metrics side by side per date
+model_pairs AS (
+  SELECT
+    be.event_date,
+    be.row_count AS base_events_rows,
+    be.sessions AS base_events_sessions,
+    be.users AS base_events_users,
+    s.row_count AS sessions_rows,
+    s.sessions AS sessions_sessions,
+    pv.row_count AS page_views_rows,
+    pv.sessions AS page_views_sessions,
+    dp.row_count AS dim_pages_rows,
+    uim.row_count AS identity_map_rows,
+    u.row_count AS users_rows
+  FROM current_run be
+  LEFT JOIN current_run s ON be.event_date = s.event_date AND s.model_name = 'sessions'
+  LEFT JOIN current_run pv ON be.event_date = pv.event_date AND pv.model_name = 'fct_page_views'
+  LEFT JOIN current_run dp ON be.event_date = dp.event_date AND dp.model_name = 'dim_pages'
+  LEFT JOIN current_run uim ON be.event_date = uim.event_date AND uim.model_name = 'user_identity_map'
+  LEFT JOIN current_run u ON be.event_date = u.event_date AND u.model_name = 'users'
+  WHERE be.model_name = 'base_events'
+)
+
+-- Check 1: Sessions should have fewer rows than base_events (events aggregate into sessions)
+-- Expected: sessions = 10-40% of base_events rows (typical ratio)
+SELECT 'SESSIONS_RATIO' AS check_name,
+  event_date,
+  FORMAT('sessions/base_events ratio: %.1f%% (%d/%d). Expected 10-40%%.',
+    100.0 * sessions_rows / NULLIF(base_events_rows, 0),
+    sessions_rows, base_events_rows
+  ) AS detail
+FROM model_pairs
+WHERE base_events_rows > 0
+  AND (
+    SAFE_DIVIDE(sessions_rows, base_events_rows) > 0.50
+    OR SAFE_DIVIDE(sessions_rows, base_events_rows) < 0.05
+  )
+
+UNION ALL
+
+-- Check 2: Sessions session count should closely match base_events session count
+-- The difference accounts for null/empty session_keys filtered out
+-- Expected: sessions retains 95-100% of base_events sessions
+SELECT 'SESSION_COUNT_MATCH' AS check_name,
+  event_date,
+  FORMAT('sessions unique sessions: %d vs base_events: %d (%.1f%% retention). Expected 95-100%%.',
+    sessions_sessions, base_events_sessions,
+    100.0 * sessions_sessions / NULLIF(base_events_sessions, 0)
+  ) AS detail
+FROM model_pairs
+WHERE base_events_sessions > 0
+  AND SAFE_DIVIDE(sessions_sessions, base_events_sessions) < 0.90
+
+UNION ALL
+
+-- Check 3: Page views sessions should be <= total sessions
+SELECT 'PAGE_VIEWS_SESSIONS' AS check_name,
+  event_date,
+  FORMAT('fct_page_views sessions (%d) exceeds sessions rows (%d). Possible fan-out.',
+    page_views_sessions, sessions_rows
+  ) AS detail
+FROM model_pairs
+WHERE page_views_sessions > sessions_rows
+  AND sessions_rows > 0
+
+UNION ALL
+
+-- Check 4: dim_pages should have reasonable count relative to page views
+-- A very high ratio could indicate key generation issues
+SELECT 'DIM_PAGES_RATIO' AS check_name,
+  event_date,
+  FORMAT('dim_pages (%d) exceeds page_views (%d). More unique pages than page views is unexpected.',
+    dim_pages_rows, page_views_rows
+  ) AS detail
+FROM model_pairs
+WHERE dim_pages_rows > page_views_rows
+  AND page_views_rows > 0
+
+${ when(config.HAS_ECOMMERCE, `
+UNION ALL
+
+-- Check 5 (ecommerce): Transactions should be a small fraction of base_events
+SELECT 'TRANSACTIONS_RATIO' AS check_name,
+  mp.event_date,
+  FORMAT('transactions/base_events ratio: %.2f%% (%d/%d). Unusually high if >5%%.',
+    100.0 * t.row_count / NULLIF(mp.base_events_rows, 0),
+    t.row_count, mp.base_events_rows
+  ) AS detail
+FROM model_pairs mp
+JOIN current_run t ON mp.event_date = t.event_date AND t.model_name = 'transactions'
+WHERE mp.base_events_rows > 0
+  AND SAFE_DIVIDE(t.row_count, mp.base_events_rows) > 0.05
+`)}

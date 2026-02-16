@@ -1,0 +1,80 @@
+config {
+  type: "assertion",
+  schema: dataform.projectConfig.vars.DESTINATION_DATASET,
+  description: "Tier 1: Structural integrity checks on base_events. Blocks downstream models on failure.",
+  tags: ["daily", "ga4", "assertion", "tier1"],
+  dependencies: ["base_events"]
+}
+
+-- Returns rows that FAIL the check. Any rows = assertion failure.
+
+WITH date_coverage AS (
+  SELECT
+    COUNT(DISTINCT event_date) AS dates_loaded,
+    MIN(event_date) AS min_date,
+    MAX(event_date) AS max_date,
+    COUNT(*) AS total_rows
+  FROM ${ref("base_events")}
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+    AND event_date < CURRENT_DATE()
+),
+
+null_rates AS (
+  SELECT
+    COUNT(*) AS total_rows,
+    COUNTIF(session_key IS NULL OR session_key = '') AS null_session_keys,
+    COUNTIF(event_name IS NULL OR event_name = '') AS null_event_names,
+    COUNTIF(event_timestamp IS NULL) AS null_timestamps,
+    COUNTIF(user_id IS NULL OR user_id = '') AS null_user_ids,
+    COUNTIF(event_key IS NULL OR event_key = '') AS null_event_keys
+  FROM ${ref("base_events")}
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+    AND event_date < CURRENT_DATE()
+),
+
+duplicate_keys AS (
+  SELECT
+    COUNT(*) AS duplicate_count
+  FROM (
+    SELECT event_key
+    FROM ${ref("base_events")}
+    WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+      AND event_date < CURRENT_DATE()
+    GROUP BY event_key
+    HAVING COUNT(*) > 1
+  )
+)
+
+-- Check 1: No data loaded
+SELECT 'NO_DATA' AS check_name,
+  FORMAT('No rows loaded for refresh window. Expected dates: %s to %s',
+    CAST(DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY) AS STRING),
+    CAST(DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY) AS STRING)
+  ) AS detail
+FROM date_coverage
+WHERE total_rows = 0
+
+UNION ALL
+
+-- Check 2: Critical fields null at >5% rate
+SELECT 'HIGH_NULL_RATE' AS check_name,
+  FORMAT('Null rates — session_key: %d/%d (%.1f%%), event_name: %d/%d (%.1f%%), event_key: %d/%d (%.1f%%)',
+    null_session_keys, total_rows, 100.0 * null_session_keys / NULLIF(total_rows, 0),
+    null_event_names, total_rows, 100.0 * null_event_names / NULLIF(total_rows, 0),
+    null_event_keys, total_rows, 100.0 * null_event_keys / NULLIF(total_rows, 0)
+  ) AS detail
+FROM null_rates
+WHERE total_rows > 0
+  AND (
+    SAFE_DIVIDE(null_event_names, total_rows) > 0.05
+    OR SAFE_DIVIDE(null_event_keys, total_rows) > 0.05
+    OR SAFE_DIVIDE(null_timestamps, total_rows) > 0.01
+  )
+
+UNION ALL
+
+-- Check 3: Duplicate event keys
+SELECT 'DUPLICATE_KEYS' AS check_name,
+  FORMAT('%d duplicate event_key values detected', duplicate_count) AS detail
+FROM duplicate_keys
+WHERE duplicate_count > 0

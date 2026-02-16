@@ -3,7 +3,7 @@ config {
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "User-level lifetime aggregations with resolved identity",
   tags: ["daily", "ga4", "users", "reporting"],
-  dependencies: ["base_events", "user_identity_map", "sessions"],
+  dependencies: ["base_events", "assert_base_events_integrity", "user_identity_map", "sessions"],
   bigquery: {
     clusterBy: ["resolved_user_id"]
   }

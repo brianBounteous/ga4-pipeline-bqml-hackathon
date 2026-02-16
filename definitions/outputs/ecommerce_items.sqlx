@@ -4,7 +4,7 @@ config {
   schema: dataform.projectConfig.vars.DESTINATION_DATASET,
   description: "Item-level ecommerce data from all ecommerce events (wide table with facts and dimensions)",
   tags: ["daily", "ga4", "ecommerce", "reporting"],
-  dependencies: ["base_events"],
+  dependencies: ["base_events", "assert_base_events_integrity"],
   bigquery: {
     partitionBy: "event_date",
     clusterBy: ["item_id", "session_key"]
