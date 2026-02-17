@@ -126,8 +126,8 @@ const APP_PARAMS_ARRAY = [
     { name: "firebase_previous_class", type: "string" },
     { name: "firebase_previous_id", type: "string" },
     { name: "firebase_previous_screen", type: "string", consolidated_name: "screen_referrer" },
-    { name: "firebase_screen", type: "string", consolidated_name: "screen_location" },
-    { name: "firebase_screen_class", type: "string", consolidated_name: "screen_title" },
+    { name: "firebase_screen", type: "string", consolidated_name: "screen_title" },
+    { name: "firebase_screen_class", type: "string", consolidated_name: "screen_location" },
     { name: "firebase_screen_id", type: "string" }
 ];
 
