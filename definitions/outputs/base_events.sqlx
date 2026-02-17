@@ -170,13 +170,13 @@ js {
         console.log(`[BASE_EVENTS] Initial ${daysBack}-day load from events_*`);
       }
     }
-  } else {
+  } else if (!helpers.isAdvancedMode()) {
     // Incremental mode: Load last 3 days with smart table selection
     if (config.USE_FRESH_DAILY) {
       console.log(`[BASE_EVENTS] 3-day rolling refresh with mixed sources`);
       console.log(`[BASE_EVENTS] - Days 1-2: events_fresh_daily_*`);
       console.log(`[BASE_EVENTS] - Day 3: events_*`);
-      
+
       useMixedSources = true;
       dateFilter = null;
       sourceTable = null;
@@ -184,14 +184,16 @@ js {
       dateFilter = `_TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
                     AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))`;
       sourceTable = ref("events_*");
-      
+
       console.log(`[BASE_EVENTS] 3-day rolling refresh from events_*`);
     }
   }
-  
-  console.log(`[BASE_EVENTS] Effective data stream type: ${effectiveDataStreamType}`);
-  if (effectiveDataStreamType === 'both') {
-    console.log(`[BASE_EVENTS] Consolidate web/app params: ${shouldConsolidate}`);
+
+  if (!helpers.isAdvancedMode()) {
+    console.log(`[BASE_EVENTS] Effective data stream type: ${effectiveDataStreamType}`);
+    if (effectiveDataStreamType === 'both') {
+      console.log(`[BASE_EVENTS] Consolidate web/app params: ${shouldConsolidate}`);
+    }
   }
 }
 
