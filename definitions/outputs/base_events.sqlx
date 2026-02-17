@@ -519,15 +519,15 @@ keys_added AS (
           firebase_screen_class,
           firebase_screen_id,
           firebase_previous_screen,
-          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, ''))))) AS screen_key
+          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, firebase_screen_class, ''))))) AS screen_key
         ) AS app,
-        
+
         -- Screen-session compound key for unique screen view calculations
         CONCAT(
           COALESCE(stream_id, ''), '-',
           COALESCE(CAST(ga_session_id AS STRING), ''), '-',
           COALESCE(user_id, ''), '-',
-          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, '')))))
+          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, firebase_screen_class, '')))))
         ) AS screen_session_key`
         )}
         ${ when(
@@ -566,9 +566,9 @@ keys_added AS (
           firebase_screen_class,
           firebase_screen_id,
           firebase_previous_screen,
-          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, ''))))) AS screen_key
+          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, firebase_screen_class, ''))))) AS screen_key
         ) AS app,
-        
+
         -- Both page-session and screen-session compound keys
         CONCAT(
           COALESCE(stream_id, ''), '-',
@@ -576,12 +576,12 @@ keys_added AS (
           COALESCE(user_id, ''), '-',
           TO_BASE64(MD5(LOWER(TRIM(SPLIT(COALESCE(page_location, ''), '?')[SAFE_OFFSET(0)]))))
         ) AS page_session_key,
-        
+
         CONCAT(
           COALESCE(stream_id, ''), '-',
           COALESCE(CAST(ga_session_id AS STRING), ''), '-',
           COALESCE(user_id, ''), '-',
-          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, '')))))
+          TO_BASE64(MD5(LOWER(TRIM(COALESCE(firebase_screen, firebase_screen_class, '')))))
         ) AS screen_session_key`
         )}
         

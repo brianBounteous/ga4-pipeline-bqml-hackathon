@@ -148,8 +148,8 @@ function getScreenFieldRefs() {
   
   if (effectiveType === 'app') {
     return {
-      location: 'app.firebase_screen',
-      path: 'app.firebase_screen',
+      location: 'COALESCE(app.firebase_screen, app.firebase_screen_class)',
+      path: 'COALESCE(app.firebase_screen, app.firebase_screen_class)',
       referrer: 'CAST(NULL AS STRING)',
       key: 'app.screen_key',
       title: 'app.firebase_screen_class'
@@ -167,8 +167,8 @@ function getScreenFieldRefs() {
     };
   } else {
     return {
-      location: 'COALESCE(page.page_location, app.firebase_screen)',
-      path: 'COALESCE(page.page_path, app.firebase_screen)',
+      location: 'COALESCE(page.page_location, app.firebase_screen, app.firebase_screen_class)',
+      path: 'COALESCE(page.page_path, app.firebase_screen, app.firebase_screen_class)',
       referrer: 'page.page_referrer',
       key: 'COALESCE(page.page_key, app.screen_key)',
       title: 'COALESCE(page.page_title, app.firebase_screen_class)'
