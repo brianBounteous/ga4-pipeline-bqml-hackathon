@@ -17,20 +17,24 @@ if (helpers.isAdvancedMode()) {
 
     console.log(`[DECLARATIONS] Property: ${propertyName}, Dataset: ${property.source_dataset}`);
 
-    // We'll reference these in SQL using the construct:
-    // `${dataform.projectConfig.vars.SOURCE_PROJECT}.${property.source_dataset}.events_*`
-    // So we just need to declare them for dependency tracking
     declare({
       database: dataform.projectConfig.vars.SOURCE_PROJECT,
       schema: property.source_dataset,
       name: 'events_*',
     });
 
-    declare({
-      database: dataform.projectConfig.vars.SOURCE_PROJECT,
-      schema: property.source_dataset,
-      name: 'events_fresh_daily_*',
+    // Only declare fresh_daily if at least one stream in this property uses it
+    const propertyUsesFreshDaily = Object.values(property.streams).some(stream => {
+      return stream.use_fresh_daily !== undefined ? stream.use_fresh_daily : config.USE_FRESH_DAILY;
     });
+
+    if (propertyUsesFreshDaily) {
+      declare({
+        database: dataform.projectConfig.vars.SOURCE_PROJECT,
+        schema: property.source_dataset,
+        name: 'events_fresh_daily_*',
+      });
+    }
   });
 
 } else {
@@ -43,9 +47,11 @@ if (helpers.isAdvancedMode()) {
     name: 'events_*',
   });
 
-  declare({
-    database: dataform.projectConfig.vars.SOURCE_PROJECT,
-    schema: dataform.projectConfig.vars.SOURCE_DATASET,
-    name: 'events_fresh_daily_*',
-  });
+  if (config.USE_FRESH_DAILY) {
+    declare({
+      database: dataform.projectConfig.vars.SOURCE_PROJECT,
+      schema: dataform.projectConfig.vars.SOURCE_DATASET,
+      name: 'events_fresh_daily_*',
+    });
+  }
 }

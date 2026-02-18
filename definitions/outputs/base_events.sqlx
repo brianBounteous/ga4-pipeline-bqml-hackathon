@@ -26,14 +26,13 @@ js {
    * Handles backfill, mixed sources, and stream filtering
    */
   function generatePropertySQL(propertyName, property, isIncremental) {
-    const sourceProject = dataform.projectConfig.vars.SOURCE_PROJECT;
     const sourceDataset = property.source_dataset;
     const streamFilter = helpers.generateStreamFilter(propertyName);
 
-    // Determine if this property uses fresh_daily
-    const useFreshDaily = property.use_fresh_daily !== undefined
-      ? property.use_fresh_daily
-      : config.USE_FRESH_DAILY;
+    // Determine if this property uses fresh_daily (check per-stream, fall back to global flag)
+    const useFreshDaily = Object.values(property.streams).some(stream => {
+      return stream.use_fresh_daily !== undefined ? stream.use_fresh_daily : config.USE_FRESH_DAILY;
+    });
 
     // Backfill mode
     if (!isIncremental && config.FORCE_FULL_BACKFILL) {
@@ -43,7 +42,7 @@ js {
       const endDateSQL = endDate.includes('FORMAT_DATE') ? `(${endDate})` : `'${endDate}'`;
 
       return `
-      SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+      SELECT * FROM ${ref({schema: sourceDataset, name: 'events_*'})}
       WHERE _TABLE_SUFFIX BETWEEN ${startDateSQL} AND ${endDateSQL}
         AND (${streamFilter})`;
     }
@@ -53,14 +52,14 @@ js {
       if (!isIncremental) {
         // Initial load with mixed sources
         return `
-        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_fresh_daily_*\`
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_daily_*'})}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
           AND (${streamFilter})
 
         UNION ALL
 
-        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_*'})}
         WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
           AND _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
@@ -68,14 +67,14 @@ js {
       } else {
         // Incremental with mixed sources
         return `
-        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_fresh_daily_*\`
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_daily_*'})}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
           AND (${streamFilter})
 
         UNION ALL
 
-        SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_*'})}
         WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
           AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
           AND (${streamFilter})`;
@@ -94,7 +93,7 @@ js {
     }
 
     return `
-      SELECT * FROM \`${sourceProject}.${sourceDataset}.events_*\`
+      SELECT * FROM ${ref({schema: sourceDataset, name: 'events_*'})}
       WHERE ${dateFilter}
         AND (${streamFilter})`;
   }
@@ -195,6 +194,11 @@ js {
       console.log(`[BASE_EVENTS] Consolidate web/app params: ${shouldConsolidate}`);
     }
   }
+
+  // Simple mode ref guards: prevents ambiguous ref() when multiple schemas are declared in advanced mode.
+  // In advanced mode these are null; the branches that use them are never rendered in that case.
+  const simpleEventsRef = helpers.isAdvancedMode() ? null : ref("events_*");
+  const simpleFreshDailyRef = helpers.isAdvancedMode() ? null : ref("events_fresh_daily_*");
 }
 
 WITH raw_data AS (
@@ -209,26 +213,26 @@ WITH raw_data AS (
       ${ when(!incremental(),
         `
         -- Initial load: Days 1-2 from fresh_daily, Days 3-7 from events_*
-        SELECT * FROM ${ref("events_fresh_daily_*")}
+        SELECT * FROM ${simpleFreshDailyRef}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
 
         UNION ALL
 
-        SELECT * FROM ${ref("events_*")}
+        SELECT * FROM ${simpleEventsRef}
         WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
           AND _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL ${config.INITIAL_LOAD_DAYS} DAY))
                                 AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
         `,
         `
         -- Incremental: Days 1-2 from fresh_daily, Day 3 from events_*
-        SELECT * FROM ${ref("events_fresh_daily_*")}
+        SELECT * FROM ${simpleFreshDailyRef}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
 
         UNION ALL
 
-        SELECT * FROM ${ref("events_*")}
+        SELECT * FROM ${simpleEventsRef}
         WHERE _TABLE_SUFFIX NOT LIKE 'intraday%'
           AND _TABLE_SUFFIX = FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY))
         `
