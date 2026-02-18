@@ -28,6 +28,12 @@ const HAS_ECOMMERCE = dataform.projectConfig.vars.HAS_ECOMMERCE === 'true';
  */
 const INITIAL_LOAD_DAYS = 7;
 
+/**
+ * Rolling refresh window (days) - How many days back incremental runs reprocess
+ * Used by base_events incremental date filter and model_execution_log audit window
+ */
+const ROLLING_REFRESH_DAYS = 3;
+
 // ============================================================================
 // EXPORT
 // ============================================================================
@@ -37,7 +43,8 @@ const coreConfig = {
   BACKFILL_START_DATE,
   BACKFILL_END_DATE,
   HAS_ECOMMERCE,
-  INITIAL_LOAD_DAYS
+  INITIAL_LOAD_DAYS,
+  ROLLING_REFRESH_DAYS
 };
 
 module.exports = { coreConfig };

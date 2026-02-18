@@ -22,7 +22,8 @@ config {
 js {
   const helpers = require('includes/helper.js');
   const config = helpers.getConfig();
-  
+  const rollingRefreshDays = config.ROLLING_REFRESH_DAYS;
+
   const enabledModels = [
     'base_events', 'sessions', 'dim_pages', 'fct_page_views',
     'user_identity_map', 'users'
@@ -40,7 +41,7 @@ WITH date_spine AS (
   SELECT event_date
   FROM UNNEST(
     GENERATE_DATE_ARRAY(
-      DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY),
+      DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY),
       DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
     )
   ) AS event_date
@@ -59,7 +60,7 @@ base_events_stats AS (
     COUNT(DISTINCT session_key) AS sessions,
     COUNT(DISTINCT user_id) AS users
   FROM ${ref("base_events")}
-  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND event_date < CURRENT_DATE()
   GROUP BY event_date
 ),
@@ -73,7 +74,7 @@ sessions_stats AS (
     COUNT(DISTINCT session_key) AS sessions,
     COUNT(DISTINCT user_id) AS users
   FROM ${ref("sessions")}
-  WHERE session_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE session_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND session_date < CURRENT_DATE()
   GROUP BY session_date
 ),
@@ -87,7 +88,7 @@ dim_pages_stats AS (
     CAST(NULL AS INT64) AS sessions,
     CAST(NULL AS INT64) AS users
   FROM ${ref("dim_pages")}
-  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND last_seen_date < CURRENT_DATE()
   GROUP BY last_seen_date
 ),
@@ -101,7 +102,7 @@ fct_page_views_stats AS (
     COUNT(DISTINCT session_key) AS sessions,
     COUNT(DISTINCT user_id) AS users
   FROM ${ref("fct_page_views")}
-  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND event_date < CURRENT_DATE()
   GROUP BY event_date
 ),
@@ -115,7 +116,7 @@ user_identity_map_stats AS (
     CAST(NULL AS INT64) AS sessions,
     COUNT(DISTINCT user_pseudo_id) AS users
   FROM ${ref("user_identity_map")}
-  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND last_seen_date < CURRENT_DATE()
   GROUP BY last_seen_date
 ),
@@ -129,7 +130,7 @@ users_stats AS (
     CAST(NULL AS INT64) AS sessions,
     COUNT(*) AS users
   FROM ${ref("users")}
-  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE last_seen_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND last_seen_date < CURRENT_DATE()
   GROUP BY last_seen_date
 )
@@ -145,7 +146,7 @@ transactions_stats AS (
     COUNT(DISTINCT session_key) AS sessions,
     COUNT(DISTINCT user_id) AS users
   FROM ${ref("transactions")}
-  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND event_date < CURRENT_DATE()
   GROUP BY event_date
 ),
@@ -159,7 +160,7 @@ ecommerce_items_stats AS (
     COUNT(DISTINCT session_key) AS sessions,
     COUNT(DISTINCT user_id) AS users
   FROM ${ref("ecommerce_items")}
-  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)
+  WHERE event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${rollingRefreshDays} DAY)
     AND event_date < CURRENT_DATE()
   GROUP BY event_date
 )
