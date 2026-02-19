@@ -6,7 +6,7 @@ A Dataform pipeline for processing GA4 event data in BigQuery. Designed as an ag
 
 ### Data Flow
 ```
-GA4 Export (events_*, events_fresh_daily_*)
+GA4 Export (events_*, events_fresh_*)
            ↓
     [base_events] ─── Event-level data with 3-day rolling refresh
            ↓
@@ -28,7 +28,7 @@ GA4 Export (events_*, events_fresh_daily_*)
 
 ### Processing Strategy
 
-Daily runs delete and reload the last 3 days of `base_events`, then rebuild downstream tables. When `USE_FRESH_DAILY = true`, days 1–2 come from `events_fresh_daily_*` and day 3 from finalized `events_*`.
+Daily runs delete and reload the last 3 days of `base_events`, then rebuild downstream tables. When `USE_FRESH_DAILY = true`, days 1–2 come from `events_fresh_*` and day 3 from finalized `events_*`.
 
 ## Quick Start
 

@@ -32,7 +32,7 @@ if (helpers.isAdvancedMode()) {
       declare({
         database: dataform.projectConfig.vars.SOURCE_PROJECT,
         schema: property.source_dataset,
-        name: 'events_fresh_daily_*',
+        name: 'events_fresh_*',
       });
     }
   });
@@ -51,7 +51,7 @@ if (helpers.isAdvancedMode()) {
     declare({
       database: dataform.projectConfig.vars.SOURCE_PROJECT,
       schema: dataform.projectConfig.vars.SOURCE_DATASET,
-      name: 'events_fresh_daily_*',
+      name: 'events_fresh_*',
     });
   }
 }

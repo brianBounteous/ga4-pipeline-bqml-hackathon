@@ -52,7 +52,7 @@ js {
       if (!isIncremental) {
         // Initial load with mixed sources
         return `
-        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_daily_*'})}
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_*'})}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
           AND (${streamFilter})
@@ -67,7 +67,7 @@ js {
       } else {
         // Incremental with mixed sources
         return `
-        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_daily_*'})}
+        SELECT * FROM ${ref({schema: sourceDataset, name: 'events_fresh_*'})}
         WHERE _TABLE_SUFFIX BETWEEN FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 2 DAY))
                                  AND FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))
           AND (${streamFilter})
@@ -155,7 +155,7 @@ js {
       
       if (config.USE_FRESH_DAILY) {
         console.log(`[BASE_EVENTS] Initial ${daysBack}-day load with mixed sources`);
-        console.log(`[BASE_EVENTS] - Days 1-2: events_fresh_daily_*`);
+        console.log(`[BASE_EVENTS] - Days 1-2: events_fresh_*`);
         console.log(`[BASE_EVENTS] - Days 3-${daysBack}: events_*`);
         
         useMixedSources = true;
@@ -173,7 +173,7 @@ js {
     // Incremental mode: Load last 3 days with smart table selection
     if (config.USE_FRESH_DAILY) {
       console.log(`[BASE_EVENTS] 3-day rolling refresh with mixed sources`);
-      console.log(`[BASE_EVENTS] - Days 1-2: events_fresh_daily_*`);
+      console.log(`[BASE_EVENTS] - Days 1-2: events_fresh_*`);
       console.log(`[BASE_EVENTS] - Day 3: events_*`);
 
       useMixedSources = true;
@@ -198,7 +198,7 @@ js {
   // Simple mode ref guards: prevents ambiguous ref() when multiple schemas are declared in advanced mode.
   // In advanced mode these are null; the branches that use them are never rendered in that case.
   const simpleEventsRef = helpers.isAdvancedMode() ? null : ref("events_*");
-  const simpleFreshDailyRef = helpers.isAdvancedMode() ? null : ref("events_fresh_daily_*");
+  const simpleFreshDailyRef = helpers.isAdvancedMode() ? null : ref("events_fresh_*");
 }
 
 WITH raw_data AS (
